@@ -1,0 +1,9 @@
+[submodule "vr_pose_publisher"]
+	path = vr_pose_publisher
+	url = git@github.com:fiveages-sim/vr_pose_publisher.git
+[submodule "ros2_robot_interface"]
+	path = ros2_robot_interface
+	url = git@github.com:fiveages-sim/ros2_robot_interface.git
+[submodule "ros2-viser"]
+	path = ros2-viser
+	url = git@github.com:fiveages-sim/ros2-viser.git
