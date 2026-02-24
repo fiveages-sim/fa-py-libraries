@@ -8,7 +8,7 @@ DEFAULT_PYTHON_VERSION="3.12"
 PYTHON_VERSION="${PYTHON_VERSION:-}"
 
 print_usage() {
-  echo "用法: $0 [submodules|conda [python版本]|install|all [python版本]]"
+  echo "用法: $0 [submodules|conda [python版本]|install|pypi-mirror|all [python版本]]"
   echo
   echo "不带参数时进入交互菜单。"
   echo "未指定版本时默认使用 Python $DEFAULT_PYTHON_VERSION。"
@@ -117,6 +117,27 @@ install_projects() {
   echo ">>> 安装完成。"
 }
 
+configure_nju_pypi_mirror() {
+  local pip_config_dir="$HOME/.config/pip"
+  local pip_config_file="$pip_config_dir/pip.conf"
+
+  mkdir -p "$pip_config_dir"
+
+  if [[ -f "$pip_config_file" ]]; then
+    cp "$pip_config_file" "$pip_config_file.bak.$(date +%Y%m%d%H%M%S)"
+    echo ">>> 已备份现有配置: $pip_config_file.bak.<timestamp>"
+  fi
+
+  cat > "$pip_config_file" <<'EOF'
+[global]
+index-url = https://mirrors.nju.edu.cn/pypi/web/simple
+format = columns
+EOF
+
+  echo ">>> 已配置 PyPI 镜像为 NJU: https://mirrors.nju.edu.cn/pypi/web/simple"
+  echo ">>> 配置文件: $pip_config_file"
+}
+
 run_all() {
   local python_version="${1:-}"
   init_submodules
@@ -136,6 +157,9 @@ main() {
     install)
       install_projects
       ;;
+    pypi-mirror)
+      configure_nju_pypi_mirror
+      ;;
     all)
       run_all "$python_version_arg"
       ;;
@@ -145,8 +169,9 @@ main() {
       echo "  2) 创建 fa-ros2 conda 环境"
       echo "  3) 安装 interface / viser / vr"
       echo "  4) 全部执行"
+      echo "  5) 配置 NJU PyPI 镜像"
       echo "  q) 退出"
-      read -r -p "输入选项 [1/2/3/4/q]: " choice
+      read -r -p "输入选项 [1/2/3/4/5/q]: " choice
       case "$choice" in
         1) init_submodules ;;
         2)
@@ -159,6 +184,9 @@ main() {
         4)
           read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
           run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
+          ;;
+        5)
+          configure_nju_pypi_mirror
           ;;
         q|Q) echo "已退出。" ;;
         *) echo "无效选项。"; exit 1 ;;
