@@ -71,3 +71,4 @@
 
 - 所有启动命令会先检查并激活 conda 环境 `fa-ros2`。
 - 若环境不存在，请先执行 `./init.sh conda` 或 `./init.sh all`。
+- VR遥操需要额外的ssl证书配置，请参考对应子模块的readme
