@@ -114,6 +114,14 @@ install_projects() {
     python -m pip install -e "$viser_dir"
     python -m pip install -e "$vr_dir"
   )
+  # 为 vr_pose_publisher 生成 SSL 证书（若不存在）
+  if [[ -f "$vr_dir/cert.pem" && -f "$vr_dir/key.pem" ]]; then
+    echo ">>> vr_pose_publisher 证书已存在，跳过生成。"
+  else
+    echo ">>> 为 vr_pose_publisher 生成 SSL 证书（全部使用回车默认）..."
+    (cd "$vr_dir" && printf '\n\n\n\n\n\n\n' | openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout key.pem -out cert.pem)
+    echo ">>> 证书已生成: $vr_dir/cert.pem, $vr_dir/key.pem"
+  fi
   echo ">>> 安装完成。"
 }
 
