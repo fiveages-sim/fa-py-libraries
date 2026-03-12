@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_NAME="fa-ros2"
 
 usage() {
-  echo "用法: $0 [viser|vr|record|playback [json文件路径]|all]"
+  echo "用法: $0 [viser|vr|record|playback [json文件路径]|versions|all]"
   echo
   echo "不带参数时进入交互菜单。"
   echo "说明:"
@@ -14,6 +14,7 @@ usage() {
   echo "  vr         启动 vr_pose_publisher 的 launch.py"
   echo "  record     启动 interface 的录制模式"
   echo "  playback   启动 interface 的回放模式（可选传入 json 文件路径）"
+  echo "  versions   一键查看当前各库版本号"
   echo "  all        交互选择上述任一启动项"
 }
 
@@ -82,14 +83,69 @@ run_interface_playback() {
   fi
 }
 
+read_project_name_version() {
+  local pyproject_file="$1"
+  local project_name=""
+  local project_version=""
+
+  # 只读取 [project] 段内的 name/version，避免误匹配其他段
+  project_name="$(
+    awk -F'=' '
+      /^\[project\]/ { in_project=1; next }
+      /^\[/ { in_project=0 }
+      in_project && $1 ~ /^[[:space:]]*name[[:space:]]*$/ {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
+        gsub(/^"|"$/, "", $2)
+        print $2
+        exit
+      }
+    ' "$pyproject_file"
+  )"
+
+  project_version="$(
+    awk -F'=' '
+      /^\[project\]/ { in_project=1; next }
+      /^\[/ { in_project=0 }
+      in_project && $1 ~ /^[[:space:]]*version[[:space:]]*$/ {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
+        gsub(/^"|"$/, "", $2)
+        print $2
+        exit
+      }
+    ' "$pyproject_file"
+  )"
+
+  echo "${project_name:-unknown}|${project_version:-unknown}"
+}
+
+show_library_versions() {
+  local libs=("ros2-viser" "vr_pose_publisher" "ros2_robot_interface")
+  local lib_dir pyproject info project_name project_version
+
+  echo ">>> 当前库版本:"
+  for lib_dir in "${libs[@]}"; do
+    pyproject="$ROOT_DIR/$lib_dir/pyproject.toml"
+    if [[ ! -f "$pyproject" ]]; then
+      echo "  - $lib_dir: 未找到 pyproject.toml"
+      continue
+    fi
+
+    info="$(read_project_name_version "$pyproject")"
+    project_name="${info%%|*}"
+    project_version="${info#*|}"
+    echo "  - $lib_dir -> $project_name: $project_version"
+  done
+}
+
 interactive_menu() {
   echo "请选择要启动的功能:"
   echo "  1) ros2-viser launch"
   echo "  2) vr pose launch"
   echo "  3) interface record_playback 录制模式"
   echo "  4) interface record_playback 回放模式"
+  echo "  5) 查看各库版本号"
   echo "  q) 退出"
-  read -r -p "输入选项 [1/2/3/4/q]: " choice
+  read -r -p "输入选项 [1/2/3/4/5/q]: " choice
 
   case "$choice" in
     1) run_viser_launch ;;
@@ -99,6 +155,7 @@ interactive_menu() {
       read -r -p "可选：输入回放 json 文件路径（留空则启动后自行选择）: " json_file
       run_interface_playback "${json_file:-}"
       ;;
+    5) show_library_versions ;;
     q|Q) echo "已退出。" ;;
     *) echo "无效选项。"; exit 1 ;;
   esac
@@ -117,6 +174,9 @@ main() {
       ;;
     playback)
       run_interface_playback "${2:-}"
+      ;;
+    versions)
+      show_library_versions
       ;;
     all)
       interactive_menu
