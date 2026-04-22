@@ -8,7 +8,7 @@ DEFAULT_PYTHON_VERSION="3.12"
 PYTHON_VERSION="${PYTHON_VERSION:-}"
 
 print_usage() {
-  echo "用法: $0 [submodules|conda [python版本]|install|pypi-mirror|all [python版本]]"
+  echo "用法: $0 [submodules|conda [python版本]|install|pypi-mirror|ros2-workspace|all [python版本]]"
   echo
   echo "不带参数时进入交互菜单。"
   echo "未指定版本时默认使用 Python $DEFAULT_PYTHON_VERSION。"
@@ -125,6 +125,53 @@ install_projects() {
   echo ">>> 安装完成。"
 }
 
+configure_ros2_workspace_source() {
+  local activate_dir=""
+  local activate_script=""
+  local ws_path=""
+
+  if ! command -v conda >/dev/null 2>&1; then
+    echo "未检测到 conda，请先安装并配置 conda。"
+    exit 1
+  fi
+
+  if ! conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
+    echo "环境 '$ENV_NAME' 不存在，请先创建 conda 环境。"
+    exit 1
+  fi
+
+  eval "$(conda shell.bash hook)"
+  conda activate "$ENV_NAME"
+  local env_prefix="${CONDA_PREFIX:-}"
+  if [[ -z "$env_prefix" || ! -d "$env_prefix" ]]; then
+    echo "无法确定 conda 环境路径，请确认环境 '$ENV_NAME' 可正常激活。"
+    exit 1
+  fi
+
+  read -r -p "输入 ROS2 工作空间路径（默认 ~/ros2_ws）: " ws_input
+  ws_input="${ws_input:-~/ros2_ws}"
+  ws_path="${ws_input/#\~/$HOME}"
+
+  activate_dir="$env_prefix/etc/conda/activate.d"
+  activate_script="$activate_dir/fa_ros2_workspace.sh"
+  mkdir -p "$activate_dir"
+
+  cat > "$activate_script" <<EOF
+#!/usr/bin/env bash
+if [ -f "${ws_path}/install/setup.bash" ]; then
+    source "${ws_path}/install/setup.bash"
+    echo "[conda activate] Sourced ROS2 workspace: ${ws_path}/install/setup.bash"
+else
+    echo "[conda activate] WARN: ROS2 setup.bash not found at ${ws_path}/install/setup.bash"
+fi
+EOF
+
+  chmod +x "$activate_script"
+  echo ">>> 已写入 ROS2 工作空间 source 配置："
+  echo "    激活脚本: $activate_script"
+  echo "    工作空间: ${ws_path}"
+}
+
 configure_nju_pypi_mirror() {
   local pip_config_dir="$HOME/.config/pip"
   local pip_config_file="$pip_config_dir/pip.conf"
@@ -168,6 +215,9 @@ main() {
     pypi-mirror)
       configure_nju_pypi_mirror
       ;;
+    ros2-workspace)
+      configure_ros2_workspace_source
+      ;;
     all)
       run_all "$python_version_arg"
       ;;
@@ -178,8 +228,9 @@ main() {
       echo "  3) 安装 interface / viser / vr"
       echo "  4) 全部执行"
       echo "  5) 配置 NJU PyPI 镜像"
+      echo "  6) 配置 ROS2 工作空间自动 source（conda activate 时生效）"
       echo "  q) 退出"
-      read -r -p "输入选项 [1/2/3/4/5/q]: " choice
+      read -r -p "输入选项 [1/2/3/4/5/6/q]: " choice
       case "$choice" in
         1) init_submodules ;;
         2)
@@ -195,6 +246,9 @@ main() {
           ;;
         5)
           configure_nju_pypi_mirror
+          ;;
+        6)
+          configure_ros2_workspace_source
           ;;
         q|Q) echo "已退出。" ;;
         *) echo "无效选项。"; exit 1 ;;
