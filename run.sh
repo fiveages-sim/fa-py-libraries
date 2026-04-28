@@ -30,8 +30,11 @@ ensure_conda_and_activate() {
   fi
 
   # 在脚本内启用 conda shell hook，才能使用 conda activate
+  # 暂时关闭 -u，ROS2/colcon 的 setup.bash 中引用了未定义的 COLCON_TRACE
+  set +u
   eval "$(conda shell.bash hook)"
   conda activate "$ENV_NAME"
+  set -u
 }
 
 run_viser_launch() {
