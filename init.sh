@@ -6,19 +6,188 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_NAME="fa-ros2"
 DEFAULT_PYTHON_VERSION="3.12"
 PYTHON_VERSION="${PYTHON_VERSION:-}"
+GITEA_BASE_URL="${GITEA_BASE_URL:-ssh://git@192.168.110.50:2222/}"
+GITHUB_BASE_URL="git@github.com:"
+
+declare -A GITEA_ORG_MAP=(
+  ["fiveages-sim"]="Control"
+)
+
+declare -A GITEA_PATH_MAP=(
+  ["legubiao/ocs2_ros2"]="Control/ocs2_ros2"
+)
 
 print_usage() {
-  echo "用法: $0 [submodules|conda [python版本]|install|pypi-mirror|ros2-workspace|all [python版本]]"
+  echo "用法: $0 [submodules [--github|--gitea]|conda [python版本]|install|pypi-mirror|ros2-workspace|all [python版本] [--github|--gitea]]"
+  echo
+  echo "子模块源:"
+  echo "  --github   使用 GitHub（默认）"
+  echo "  --gitea    使用 Gitea 镜像（会按映射规则改写 .gitmodules）"
+  echo "  GITEA_BASE_URL 可通过环境变量覆盖，当前: $GITEA_BASE_URL"
   echo
   echo "不带参数时进入交互菜单。"
   echo "未指定版本时默认使用 Python $DEFAULT_PYTHON_VERSION。"
 }
 
+extract_github_path() {
+  local github_url=$1
+  echo "$github_url" | sed -E "s|^[^:]+://[^/]+/||; s|^[^:]+:||; s|\.git$||"
+}
+
+extract_gitea_path() {
+  local gitea_url=$1
+  local base_url_no_trailing
+  local path
+  base_url_no_trailing="$(echo "$GITEA_BASE_URL" | sed 's|/$||')"
+  path="$(echo "$gitea_url" | sed "s|^$base_url_no_trailing||; s|^$GITEA_BASE_URL||")"
+  path="$(echo "$path" | sed 's|\.git$||; s|^/||')"
+  echo "$path"
+}
+
+convert_to_gitea_url() {
+  local github_url=$1
+  local github_path
+  local gitea_path
+  local github_org
+  local github_repo
+  local gitea_org
+  local base_url
+  github_path="$(extract_github_path "$github_url")"
+  gitea_path="${GITEA_PATH_MAP[$github_path]:-}"
+
+  if [[ -z "$gitea_path" ]]; then
+    github_org="$(echo "$github_path" | cut -d'/' -f1)"
+    github_repo="$(echo "$github_path" | cut -d'/' -f2-)"
+    gitea_org="${GITEA_ORG_MAP[$github_org]:-}"
+    if [[ -n "$gitea_org" ]]; then
+      gitea_path="${gitea_org}/${github_repo}"
+    else
+      gitea_path="$github_path"
+    fi
+  fi
+
+  base_url="$(echo "$GITEA_BASE_URL" | sed 's|/$||')"
+  if echo "$GITEA_BASE_URL" | grep -qE "^https?://"; then
+    [[ "$gitea_path" =~ ^/ ]] || gitea_path="/${gitea_path}"
+    echo "${base_url}${gitea_path}"
+  elif echo "$GITEA_BASE_URL" | grep -qE "^ssh://"; then
+    [[ "$gitea_path" =~ ^/ ]] || gitea_path="/${gitea_path}"
+    echo "${base_url}${gitea_path}.git"
+  else
+    echo "${base_url}${gitea_path}.git"
+  fi
+}
+
+convert_to_github_url() {
+  local gitea_url=$1
+  local gitea_path
+  local github_path=""
+  local gitea_org
+  local gitea_repo
+  local key
+  gitea_path="$(extract_gitea_path "$gitea_url")"
+
+  for key in "${!GITEA_PATH_MAP[@]}"; do
+    if [[ "${GITEA_PATH_MAP[$key]}" == "$gitea_path" ]]; then
+      github_path="$key"
+      break
+    fi
+  done
+
+  if [[ -z "$github_path" ]]; then
+    gitea_org="$(echo "$gitea_path" | cut -d'/' -f1)"
+    gitea_repo="$(echo "$gitea_path" | cut -d'/' -f2-)"
+    for key in "${!GITEA_ORG_MAP[@]}"; do
+      if [[ "${GITEA_ORG_MAP[$key]}" == "$gitea_org" ]]; then
+        github_path="${key}/${gitea_repo}"
+        break
+      fi
+    done
+    [[ -n "$github_path" ]] || github_path="$gitea_path"
+  fi
+
+  echo "${GITHUB_BASE_URL}${github_path}.git"
+}
+
+update_submodule_urls() {
+  local source_type="${1:-github}"
+  local submodule_paths=()
+  local submodule_path
+  local current_url
+  local new_url
+  local gitea_host
+  local key
+
+  while IFS= read -r submodule_path; do
+    submodule_paths+=("$submodule_path")
+  done < <(git -C "$ROOT_DIR" config --file .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
+
+  if [[ "$source_type" == "gitea" ]]; then
+    echo ">>> 切换子模块源到 Gitea..."
+    gitea_host="$(echo "$GITEA_BASE_URL" | sed -E 's|^https?://||; s|^ssh://||; s|^git@||; s|:.*$||; s|/.*$||')"
+    for submodule_path in "${submodule_paths[@]}"; do
+      current_url="$(git -C "$ROOT_DIR" config --file .gitmodules --get "submodule.$submodule_path.url")"
+      [[ -n "$current_url" ]] || continue
+      if echo "$current_url" | grep -qE "^https?://.*${gitea_host}" || \
+         echo "$current_url" | grep -qE "^ssh://.*${gitea_host}" || \
+         echo "$current_url" | grep -q "^git@.*${gitea_host}"; then
+        continue
+      fi
+      new_url="$(convert_to_gitea_url "$current_url")"
+      if [[ "$current_url" != "$new_url" ]]; then
+        echo "    $submodule_path"
+        echo "      GitHub: $current_url"
+        echo "      Gitea:  $new_url"
+        git -C "$ROOT_DIR" config --file .gitmodules "submodule.$submodule_path.url" "$new_url"
+      fi
+    done
+  else
+    echo ">>> 切换子模块源到 GitHub..."
+    gitea_host="$(echo "$GITEA_BASE_URL" | sed -E 's|^https?://||; s|^ssh://||; s|^git@||; s|:.*$||; s|/.*$||')"
+    for submodule_path in "${submodule_paths[@]}"; do
+      current_url="$(git -C "$ROOT_DIR" config --file .gitmodules --get "submodule.$submodule_path.url")"
+      [[ -n "$current_url" ]] || continue
+      if echo "$current_url" | grep -qE "^https?://.*${gitea_host}" || \
+         echo "$current_url" | grep -qE "^ssh://.*${gitea_host}" || \
+         echo "$current_url" | grep -q "^git@.*${gitea_host}"; then
+        new_url="$(convert_to_github_url "$current_url")"
+        if [[ "$current_url" != "$new_url" ]]; then
+          echo "    $submodule_path"
+          echo "      Gitea:  $current_url"
+          echo "      GitHub: $new_url"
+          git -C "$ROOT_DIR" config --file .gitmodules "submodule.$submodule_path.url" "$new_url"
+        fi
+      fi
+    done
+  fi
+
+  git -C "$ROOT_DIR" submodule sync --recursive
+}
+
+parse_source_type() {
+  local source_type="github"
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --github) source_type="github" ;;
+      --gitea) source_type="gitea" ;;
+      *)
+        echo "未知参数: $arg"
+        print_usage
+        exit 1
+        ;;
+    esac
+  done
+  echo "$source_type"
+}
+
 init_submodules() {
+  local source_type="${1:-github}"
   local submodule_paths=()
   local path_line
 
   echo ">>> 初始化子模块..."
+  update_submodule_urls "$source_type"
   git -C "$ROOT_DIR" submodule update --init --recursive
 
   while IFS= read -r path_line; do
@@ -195,19 +364,38 @@ EOF
 
 run_all() {
   local python_version="${1:-}"
-  init_submodules
+  local source_type="${2:-github}"
+  init_submodules "$source_type"
   create_conda_env "$python_version"
   install_projects
 }
 
+choose_source_type_menu() {
+  local source_choice
+  SOURCE_TYPE_SELECTED="github"
+  echo "请选择子模块源:"
+  echo "  1) GitHub"
+  echo "  2) Gitea"
+  read -r -p "输入选项 [1/2]（默认 1）: " source_choice
+  case "${source_choice:-1}" in
+    1) SOURCE_TYPE_SELECTED="github" ;;
+    2) SOURCE_TYPE_SELECTED="gitea" ;;
+    *)
+      echo "无效选项，使用 GitHub。"
+      SOURCE_TYPE_SELECTED="github"
+      ;;
+  esac
+}
+
 main() {
-  local python_version_arg="${2:-}"
-  case "${1:-}" in
+  local cmd="${1:-}"
+  shift || true
+  case "$cmd" in
     submodules)
-      init_submodules
+      init_submodules "$(parse_source_type "$@")"
       ;;
     conda)
-      create_conda_env "$python_version_arg"
+      create_conda_env "${1:-}"
       ;;
     install)
       install_projects
@@ -219,7 +407,26 @@ main() {
       configure_ros2_workspace_source
       ;;
     all)
-      run_all "$python_version_arg"
+      local python_version_arg=""
+      local source_args=()
+      local arg
+      for arg in "$@"; do
+        case "$arg" in
+          --github|--gitea)
+            source_args+=("$arg")
+            ;;
+          *)
+            if [[ -z "$python_version_arg" ]]; then
+              python_version_arg="$arg"
+            else
+              echo "未知参数: $arg"
+              print_usage
+              exit 1
+            fi
+            ;;
+        esac
+      done
+      run_all "$python_version_arg" "$(parse_source_type "${source_args[@]}")"
       ;;
     "")
       echo "请选择操作:"
@@ -232,7 +439,10 @@ main() {
       echo "  q) 退出"
       read -r -p "输入选项 [1/2/3/4/5/6/q]: " choice
       case "$choice" in
-        1) init_submodules ;;
+        1)
+          choose_source_type_menu
+          init_submodules "$SOURCE_TYPE_SELECTED"
+          ;;
         2)
           read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
           create_conda_env "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
@@ -242,7 +452,8 @@ main() {
           ;;
         4)
           read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
-          run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
+          choose_source_type_menu
+          run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
           ;;
         5)
           configure_nju_pypi_mirror
@@ -265,4 +476,4 @@ main() {
   esac
 }
 
-main "${1:-}" "${2:-}"
+main "$@"
