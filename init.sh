@@ -277,6 +277,7 @@ install_projects() {
 
   echo ">>> 激活 conda 环境并依次安装 interface -> viser -> vr"
   (
+    set +u
     eval "$(conda shell.bash hook)"
     conda activate "$ENV_NAME"
     python -m pip install -e "$interface_dir"
@@ -309,8 +310,10 @@ configure_ros2_workspace_source() {
     exit 1
   fi
 
+  set +u
   eval "$(conda shell.bash hook)"
   conda activate "$ENV_NAME"
+  set -u
   local env_prefix="${CONDA_PREFIX:-}"
   if [[ -z "$env_prefix" || ! -d "$env_prefix" ]]; then
     echo "无法确定 conda 环境路径，请确认环境 '$ENV_NAME' 可正常激活。"
