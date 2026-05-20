@@ -1,0 +1,16 @@
+# fa-py-libraries 运行时环境配置
+# run.sh / init.sh install 会读取此文件；个人覆盖可建 .fa-env.local.toml（已 gitignore）
+# 临时覆盖: export FA_ENV_BACKEND=uv
+
+backend = "uv"
+
+[conda]
+name = "fa-ros2"
+
+[uv]
+venv = ".venv"
+
+[ros2]
+# 配置后 run.sh 激活环境时会 source 该工作空间的 install/setup.bash
+# workspace = "~/ros2_ws"
+workspace = "~/ros2_ws"

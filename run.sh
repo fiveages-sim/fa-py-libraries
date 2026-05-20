@@ -3,12 +3,18 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_NAME="fa-ros2"
+FA_ENV_BACKEND_OVERRIDE="${FA_ENV_BACKEND:-}"
+# shellcheck source=scripts/fa-env.sh
+source "${ROOT_DIR}/scripts/fa-env.sh"
+FA_ENV_ROOT_DIR="$ROOT_DIR"
 
 usage() {
   echo "用法: $0 [viser|vr|record|playback [json文件路径]|versions|all]"
   echo
   echo "不带参数时进入交互菜单。"
+  echo "Python 环境由 .fa-env.toml 的 backend 决定（conda | uv），可用 ./init.sh set-backend 切换。"
+  echo "临时覆盖: FA_ENV_BACKEND=uv ./run.sh viser"
+  echo
   echo "说明:"
   echo "  viser      启动 ros2-viser 的 launch.py"
   echo "  vr         启动 vr_pose_publisher 的 launch.py"
@@ -18,22 +24,9 @@ usage() {
   echo "  all        交互选择上述任一启动项"
 }
 
-ensure_conda_and_activate() {
-  if ! command -v conda >/dev/null 2>&1; then
-    echo "未检测到 conda，请先安装并配置 conda。"
-    exit 1
-  fi
-
-  if ! conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
-    echo "环境 '$ENV_NAME' 不存在，请先执行 ./init.sh conda 创建环境。"
-    exit 1
-  fi
-
-  # 在脚本内启用 conda shell hook，才能使用 conda activate
-  # 暂时关闭 -u，ROS2/colcon 的 setup.bash 中引用了未定义的 COLCON_TRACE
+ensure_python_env() {
   set +u
-  eval "$(conda shell.bash hook)"
-  conda activate "$ENV_NAME"
+  fa_env_activate "$ROOT_DIR" || exit 1
   set -u
 }
 
@@ -43,7 +36,7 @@ run_viser_launch() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_conda_and_activate
+  ensure_python_env
   echo ">>> 启动 ros2-viser launch"
   python "$script_path"
 }
@@ -54,7 +47,7 @@ run_vr_launch() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_conda_and_activate
+  ensure_python_env
   echo ">>> 启动 vr pose launch"
   python "$script_path"
 }
@@ -65,7 +58,7 @@ run_interface_record() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_conda_and_activate
+  ensure_python_env
   echo ">>> 启动 interface record_playback（录制模式）"
   python "$script_path" record
 }
@@ -77,7 +70,7 @@ run_interface_playback() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_conda_and_activate
+  ensure_python_env
   echo ">>> 启动 interface record_playback（回放模式）"
   if [[ -n "$json_file" ]]; then
     python "$script_path" playback --file "$json_file"
@@ -91,7 +84,6 @@ read_project_name_version() {
   local project_name=""
   local project_version=""
 
-  # 只读取 [project] 段内的 name/version，避免误匹配其他段
   project_name="$(
     awk -F'=' '
       /^\[project\]/ { in_project=1; next }
@@ -125,7 +117,8 @@ show_library_versions() {
   local libs=("ros2-viser" "vr_pose_publisher" "ros2_robot_interface")
   local lib_dir pyproject info project_name project_version
 
-  echo ">>> 当前库版本:"
+  fa_env_load_config "$ROOT_DIR"
+  echo ">>> 当前库版本 (backend=$FA_ENV_BACKEND):"
   for lib_dir in "${libs[@]}"; do
     pyproject="$ROOT_DIR/$lib_dir/pyproject.toml"
     if [[ ! -f "$pyproject" ]]; then
@@ -141,7 +134,8 @@ show_library_versions() {
 }
 
 interactive_menu() {
-  echo "请选择要启动的功能:"
+  fa_env_load_config "$ROOT_DIR"
+  echo "请选择要启动的功能 (backend=$FA_ENV_BACKEND):"
   echo "  1) ros2-viser launch"
   echo "  2) vr pose launch"
   echo "  3) interface record_playback 录制模式"

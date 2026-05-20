@@ -1,2 +1,6 @@
 # IDE
 .idea/
+
+# Python / 环境
+.venv/
+.fa-env.local.toml

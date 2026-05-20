@@ -3,8 +3,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 在 source 前保留环境变量覆盖（source fa-env.sh 会重置 FA_ENV_BACKEND）
+FA_ENV_BACKEND_OVERRIDE="${FA_ENV_BACKEND:-}"
+# shellcheck source=scripts/fa-env.sh
+source "${ROOT_DIR}/scripts/fa-env.sh"
+FA_ENV_ROOT_DIR="$ROOT_DIR"
+
 ENV_NAME="fa-ros2"
 DEFAULT_PYTHON_VERSION="3.12"
+INSTALL_BACKEND_OVERRIDE=""
 PYTHON_VERSION="${PYTHON_VERSION:-}"
 GITEA_BASE_URL="${GITEA_BASE_URL:-ssh://git@192.168.110.50:2222/}"
 GITHUB_BASE_URL="git@github.com:"
@@ -18,7 +25,15 @@ declare -A GITEA_PATH_MAP=(
 )
 
 print_usage() {
-  echo "用法: $0 [submodules [--github|--gitea]|conda [python版本]|install|pypi-mirror|ros2-workspace|all [python版本] [--github|--gitea]]"
+  echo "用法: $0 [submodules [--github|--gitea]|conda|uv [python版本]|install [--conda|--uv]|"
+  echo "      set-backend conda|uv|pypi-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
+  echo
+  echo "环境:"
+  echo "  conda / uv     创建对应环境（可并存，互不删除）"
+  echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
+  echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
+  echo "  ros2-workspace 按 backend 写对应 activate 挂钩；--all 则 conda+uv 都写"
+  echo "  配置见 .fa-env.toml；个人覆盖: .fa-env.local.toml；临时: FA_ENV_BACKEND=uv"
   echo
   echo "子模块源:"
   echo "  --github   使用 GitHub（默认）"
@@ -234,22 +249,71 @@ resolve_python_version() {
 
 create_conda_env() {
   local selected_python_version
+  local env_name
   selected_python_version="$(resolve_python_version "${1:-}")"
+  fa_env_load_config "$ROOT_DIR"
+  env_name="$FA_ENV_CONDA_NAME"
 
-  echo ">>> 创建 conda 环境: $ENV_NAME (Python $selected_python_version)"
+  echo ">>> 创建 conda 环境: $env_name (Python $selected_python_version)"
 
   if ! command -v conda >/dev/null 2>&1; then
     echo "未检测到 conda，请先安装并配置 conda。"
     exit 1
   fi
 
-  if conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
-    echo "环境 '$ENV_NAME' 已存在，跳过创建。"
+  if conda env list | awk '{print $1}' | grep -Fxq "$env_name"; then
+    echo "环境 '$env_name' 已存在，跳过创建。"
     return 0
   fi
 
-  conda create -n "$ENV_NAME" "python=$selected_python_version" -y
-  echo ">>> conda 环境创建完成: $ENV_NAME"
+  conda create -n "$env_name" "python=$selected_python_version" -y
+  echo ">>> conda 环境创建完成: $env_name"
+}
+
+create_uv_env() {
+  local selected_python_version
+  local venv_path
+  selected_python_version="$(resolve_python_version "${1:-}")"
+  fa_env_load_config "$ROOT_DIR"
+  venv_path="$(fa_env_uv_venv_path)"
+
+  echo ">>> 创建 uv 虚拟环境: $venv_path (Python $selected_python_version)"
+
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "未检测到 uv，请先安装: https://docs.astral.sh/uv/"
+    exit 1
+  fi
+
+  if [[ -f "${venv_path}/bin/activate" ]]; then
+    echo "虚拟环境已存在: $venv_path，跳过创建。"
+    return 0
+  fi
+
+  # 优先系统解释器 + --system-site-packages（与 ROS2 /opt/ros 的 Python 对齐）
+  fa_env_create_uv_venv "$selected_python_version" "$venv_path"
+  echo ">>> uv 虚拟环境创建完成: $venv_path（--system-site-packages）"
+  if [[ -n "${FA_ENV_ROS2_WORKSPACE:-}" ]]; then
+    fa_env_write_uv_ros2_hook "$venv_path" "$FA_ENV_ROS2_WORKSPACE"
+    echo ">>> 已根据 .fa-env.toml 为 venv 写入 ROS2 activate 挂钩。"
+  else
+    echo ">>> 提示: 执行 ./init.sh ros2-workspace 后，手动 source .venv/bin/activate 也会自动 source ROS2。"
+  fi
+}
+
+parse_install_backend_args() {
+  INSTALL_BACKEND_OVERRIDE=""
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --conda) INSTALL_BACKEND_OVERRIDE="conda" ;;
+      --uv) INSTALL_BACKEND_OVERRIDE="uv" ;;
+      *)
+        echo "未知参数: $arg"
+        print_usage
+        exit 1
+        ;;
+    esac
+  done
 }
 
 install_projects() {
@@ -257,14 +321,9 @@ install_projects() {
   local viser_dir="$ROOT_DIR/ros2-viser"
   local vr_dir="$ROOT_DIR/vr_pose_publisher"
 
-  if ! command -v conda >/dev/null 2>&1; then
-    echo "未检测到 conda，请先安装并配置 conda。"
-    exit 1
-  fi
-
-  if ! conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
-    echo "环境 '$ENV_NAME' 不存在，请先创建 conda 环境。"
-    exit 1
+  fa_env_load_config "$ROOT_DIR"
+  if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
+    FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
   fi
 
   for project_dir in "$interface_dir" "$viser_dir" "$vr_dir"; do
@@ -275,16 +334,13 @@ install_projects() {
     fi
   done
 
-  echo ">>> 激活 conda 环境并依次安装 interface -> viser -> vr"
+  echo ">>> 使用 backend=$FA_ENV_BACKEND，依次安装 interface -> viser -> vr"
   (
     set +u
-    eval "$(conda shell.bash hook)"
-    conda activate "$ENV_NAME"
-    python -m pip install -e "$interface_dir"
-    python -m pip install -e "$viser_dir"
-    python -m pip install -e "$vr_dir"
+    fa_env_activate "$ROOT_DIR"
+    fa_env_install_editable_projects "$interface_dir" "$viser_dir" "$vr_dir"
   )
-  # 为 vr_pose_publisher 生成 SSL 证书（若不存在）
+
   if [[ -f "$vr_dir/cert.pem" && -f "$vr_dir/key.pem" ]]; then
     echo ">>> vr_pose_publisher 证书已存在，跳过生成。"
   else
@@ -296,52 +352,45 @@ install_projects() {
 }
 
 configure_ros2_workspace_source() {
-  local activate_dir=""
-  local activate_script=""
-  local ws_path=""
+  local ws_input ws_stored apply_all=0
+  local arg
+  fa_env_load_config "$ROOT_DIR"
 
-  if ! command -v conda >/dev/null 2>&1; then
-    echo "未检测到 conda，请先安装并配置 conda。"
-    exit 1
-  fi
-
-  if ! conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
-    echo "环境 '$ENV_NAME' 不存在，请先创建 conda 环境。"
-    exit 1
-  fi
-
-  set +u
-  eval "$(conda shell.bash hook)"
-  conda activate "$ENV_NAME"
-  set -u
-  local env_prefix="${CONDA_PREFIX:-}"
-  if [[ -z "$env_prefix" || ! -d "$env_prefix" ]]; then
-    echo "无法确定 conda 环境路径，请确认环境 '$ENV_NAME' 可正常激活。"
-    exit 1
-  fi
+  for arg in "$@"; do
+    case "$arg" in
+      --all) apply_all=1 ;;
+      *)
+        echo "未知参数: $arg"
+        print_usage
+        exit 1
+        ;;
+    esac
+  done
 
   read -r -p "输入 ROS2 工作空间路径（默认 ~/ros2_ws）: " ws_input
   ws_input="${ws_input:-~/ros2_ws}"
-  ws_path="${ws_input/#\~/$HOME}"
+  ws_stored="${ws_input/#$HOME/\~}"
 
-  activate_dir="$env_prefix/etc/conda/activate.d"
-  activate_script="$activate_dir/fa_ros2_workspace.sh"
-  mkdir -p "$activate_dir"
+  fa_env_set_ros2_workspace "$ws_stored"
+  echo ">>> 已写入 .fa-env.toml [ros2].workspace = $ws_stored"
 
-  cat > "$activate_script" <<EOF
-#!/usr/bin/env bash
-if [ -f "${ws_path}/install/setup.bash" ]; then
-    source "${ws_path}/install/setup.bash"
-    echo "[conda activate] Sourced ROS2 workspace: ${ws_path}/install/setup.bash"
-else
-    echo "[conda activate] WARN: ROS2 setup.bash not found at ${ws_path}/install/setup.bash"
-fi
-EOF
+  if [[ "$apply_all" -eq 1 ]]; then
+    echo ">>> 为 conda 与 uv 同时写入 activate 挂钩..."
+    fa_env_apply_ros2_hooks "$ws_stored" 1
+  else
+    echo ">>> 按 backend=$FA_ENV_BACKEND 写入 activate 挂钩..."
+    fa_env_apply_ros2_hooks "$ws_stored" 0
+  fi
 
-  chmod +x "$activate_script"
-  echo ">>> 已写入 ROS2 工作空间 source 配置："
-  echo "    激活脚本: $activate_script"
-  echo "    工作空间: ${ws_path}"
+  case "$FA_ENV_BACKEND" in
+    uv)
+      echo ">>> source .venv/bin/activate 时会自动 source ROS2。"
+      ;;
+    conda)
+      echo ">>> conda activate ${FA_ENV_CONDA_NAME} 时会自动 source ROS2。"
+      ;;
+  esac
+  echo ">>> run.sh 也会读取同一配置。"
 }
 
 configure_nju_pypi_mirror() {
@@ -365,11 +414,24 @@ EOF
   echo ">>> 配置文件: $pip_config_file"
 }
 
+create_env_for_configured_backend() {
+  local python_version="${1:-}"
+  fa_env_load_config "$ROOT_DIR"
+  case "$FA_ENV_BACKEND" in
+    uv) create_uv_env "$python_version" ;;
+    conda) create_conda_env "$python_version" ;;
+    *)
+      echo "未知 backend: $FA_ENV_BACKEND"
+      exit 1
+      ;;
+  esac
+}
+
 run_all() {
   local python_version="${1:-}"
   local source_type="${2:-github}"
   init_submodules "$source_type"
-  create_conda_env "$python_version"
+  create_env_for_configured_backend "$python_version"
   install_projects
 }
 
@@ -400,14 +462,25 @@ main() {
     conda)
       create_conda_env "${1:-}"
       ;;
+    uv)
+      create_uv_env "${1:-}"
+      ;;
+    set-backend)
+      if [[ -z "${1:-}" ]]; then
+        echo "用法: $0 set-backend conda|uv"
+        exit 1
+      fi
+      fa_env_set_backend "$1"
+      ;;
     install)
+      parse_install_backend_args "$@"
       install_projects
       ;;
     pypi-mirror)
       configure_nju_pypi_mirror
       ;;
     ros2-workspace)
-      configure_ros2_workspace_source
+      configure_ros2_workspace_source "$@"
       ;;
     all)
       local python_version_arg=""
@@ -432,15 +505,19 @@ main() {
       run_all "$python_version_arg" "$(parse_source_type "${source_args[@]}")"
       ;;
     "")
+      fa_env_load_config "$ROOT_DIR"
       echo "请选择操作:"
+      echo "  当前 backend: $FA_ENV_BACKEND（见 .fa-env.toml）"
       echo "  1) 初始化子模块"
-      echo "  2) 创建 fa-ros2 conda 环境"
-      echo "  3) 安装 interface / viser / vr"
-      echo "  4) 全部执行"
-      echo "  5) 配置 NJU PyPI 镜像"
-      echo "  6) 配置 ROS2 工作空间自动 source（conda activate 时生效）"
+      echo "  2) 创建 conda 环境"
+      echo "  3) 创建 uv 虚拟环境 (.venv)"
+      echo "  4) 安装 interface / viser / vr（按 backend）"
+      echo "  5) 全部执行（子模块 + 按 backend 建环境 + 安装）"
+      echo "  6) 配置 NJU PyPI 镜像"
+      echo "  7) 配置 ROS2 工作空间（.fa-env.toml + 可选 conda hook）"
+      echo "  8) 切换 run.sh 使用的 backend (conda/uv)"
       echo "  q) 退出"
-      read -r -p "输入选项 [1/2/3/4/5/6/q]: " choice
+      read -r -p "输入选项 [1-8/q]: " choice
       case "$choice" in
         1)
           choose_source_type_menu
@@ -451,18 +528,27 @@ main() {
           create_conda_env "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
           ;;
         3)
-          install_projects
+          read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
+          create_uv_env "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
           ;;
         4)
+          install_projects
+          ;;
+        5)
           read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
           choose_source_type_menu
           run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
           ;;
-        5)
+        6)
           configure_nju_pypi_mirror
           ;;
-        6)
+        7)
           configure_ros2_workspace_source
+          ;;
+        8)
+          read -r -p "输入 backend [conda/uv]（当前 $FA_ENV_BACKEND）: " backend_choice
+          backend_choice="${backend_choice:-$FA_ENV_BACKEND}"
+          fa_env_set_backend "$backend_choice"
           ;;
         q|Q) echo "已退出。" ;;
         *) echo "无效选项。"; exit 1 ;;
