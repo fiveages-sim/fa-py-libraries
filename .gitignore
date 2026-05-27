@@ -4,3 +4,6 @@
 # Python / 环境
 .venv/
 .fa-env.local.toml
+
+# 发布产物
+dist/

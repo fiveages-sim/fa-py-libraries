@@ -10,6 +10,7 @@
 
 - `init.sh`：初始化脚本（子模块、conda/uv 环境、依赖安装）
 - `run.sh`：快速启动脚本（按配置激活环境后启动常用入口）
+- `release.sh`：发布打包脚本（更新子模块后生成 zip，输出到 `dist/`）
 - `.fa-env.toml`：选择 `run.sh` / `install` 使用 **conda** 还是 **uv**
 - `scripts/fa-env.sh`：环境配置与激活（供上述脚本共用）
 
@@ -95,6 +96,25 @@ conda 环境与 uv 的 `.venv` **互不删除**，可按需分别创建。
 ./run.sh playback
 ./run.sh playback /path/to/record.json
 ```
+
+## 发布打包
+
+使用 `release.sh` 将仓库内容打成 zip，便于分发或离线部署：
+
+```bash
+# 默认：先更新三个子模块到 origin/main 最新提交，再打包
+./release.sh
+
+# 指定输出路径
+./release.sh -o /path/to/fa-py-libraries.zip
+
+# 不拉取远程，按当前检出直接打包（离线场景）
+./release.sh --skip-submodules
+```
+
+- 默认输出：`dist/fa-py-libraries-<时间戳>.zip`（`dist/` 已加入 `.gitignore`）
+- 打包时会排除：`.idea/`、`.venv/`、`venv/`、`dist/`
+- 需要能访问子模块远程时，请勿加 `--skip-submodules`
 
 ## 说明
 
