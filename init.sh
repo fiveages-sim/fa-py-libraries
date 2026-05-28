@@ -25,11 +25,11 @@ declare -A GITEA_PATH_MAP=(
 )
 
 print_usage() {
-  echo "用法: $0 [submodules [--github|--gitea]|conda|uv [python版本]|install [--conda|--uv]|"
+  echo "用法: $0 [submodules [--github|--gitea]|update-submodules-main|env [python版本]|install [--conda|--uv]|"
   echo "      set-backend conda|uv|pypi-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
   echo
   echo "环境:"
-  echo "  conda / uv     创建对应环境（可并存，互不删除）"
+  echo "  env            按 .fa-env.toml 的 backend 创建环境"
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  ros2-workspace 按 backend 写对应 activate 挂钩；--all 则 conda+uv 都写"
@@ -234,6 +234,38 @@ init_submodules() {
   done
 
   echo ">>> 子模块初始化并切换 main 完成。"
+}
+
+update_submodules_to_latest_main() {
+  local submodule_paths=()
+  local submodule_path
+
+  echo ">>> 更新所有子模块到最新 main..."
+  git -C "$ROOT_DIR" submodule update --init --recursive
+
+  while IFS= read -r submodule_path; do
+    submodule_paths+=("$submodule_path")
+  done < <(git -C "$ROOT_DIR" config --file .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
+
+  for submodule_path in "${submodule_paths[@]}"; do
+    local submodule_dir="$ROOT_DIR/$submodule_path"
+    echo ">>> 处理子模块: $submodule_path"
+
+    if ! git -C "$submodule_dir" rev-parse --git-dir >/dev/null 2>&1; then
+      echo "    跳过：目录不是有效 Git 仓库"
+      continue
+    fi
+
+    git -C "$submodule_dir" fetch origin main
+    if git -C "$submodule_dir" show-ref --verify --quiet refs/heads/main; then
+      git -C "$submodule_dir" checkout main
+    else
+      git -C "$submodule_dir" checkout -b main --track origin/main
+    fi
+    git -C "$submodule_dir" pull --ff-only origin main
+  done
+
+  echo ">>> 所有子模块已更新到最新 main。"
 }
 
 resolve_python_version() {
@@ -459,11 +491,11 @@ main() {
     submodules)
       init_submodules "$(parse_source_type "$@")"
       ;;
-    conda)
-      create_conda_env "${1:-}"
+    update-submodules-main)
+      update_submodules_to_latest_main
       ;;
-    uv)
-      create_uv_env "${1:-}"
+    env)
+      create_env_for_configured_backend "${1:-}"
       ;;
     set-backend)
       if [[ -z "${1:-}" ]]; then
@@ -509,10 +541,12 @@ main() {
       echo "请选择操作:"
       echo "  当前 backend: $FA_ENV_BACKEND（见 .fa-env.toml）"
       echo "  1) 初始化子模块"
-      echo "  2) 创建 conda 环境"
-      echo "  3) 创建 uv 虚拟环境 (.venv)"
-      echo "  4) 安装 interface / viser / vr（按 backend）"
-      echo "  5) 全部执行（子模块 + 按 backend 建环境 + 安装）"
+      echo "  2) 按当前 backend 创建环境"
+      echo "  3) 安装 interface / viser / vr（按 backend）"
+      echo "  -------------------- 执行链路 --------------------"
+      echo "  4) 全部执行（顺序执行 1 + 2 + 3）"
+      echo "  5) 更新所有子模块到最新 main"
+      echo "  -------------------- 配置 --------------------"
       echo "  6) 配置 NJU PyPI 镜像"
       echo "  7) 配置 ROS2 工作空间（.fa-env.toml + 可选 conda hook）"
       echo "  8) 切换 run.sh 使用的 backend (conda/uv)"
@@ -525,19 +559,18 @@ main() {
           ;;
         2)
           read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
-          create_conda_env "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
+          create_env_for_configured_backend "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
           ;;
         3)
-          read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
-          create_uv_env "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
-          ;;
-        4)
           install_projects
           ;;
-        5)
+        4)
           read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
           choose_source_type_menu
           run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
+          ;;
+        5)
+          update_submodules_to_latest_main
           ;;
         6)
           configure_nju_pypi_mirror

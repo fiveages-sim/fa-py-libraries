@@ -7,3 +7,6 @@
 
 # 发布产物
 dist/
+
+# 机械臂关节记录
+joint_records/
