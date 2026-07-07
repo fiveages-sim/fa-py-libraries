@@ -10,3 +10,6 @@ dist/
 
 # 机械臂关节记录
 joint_records/
+
+# VR 遥操 ros2 bag 录制
+xr_bags/

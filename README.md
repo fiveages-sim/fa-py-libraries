@@ -10,6 +10,7 @@
 
 - `init.sh`：初始化脚本（子模块、按 backend 创建环境、依赖安装）
 - `run.sh`：快速启动脚本（按配置激活环境后启动常用入口）
+- `scripts/vr-bag.sh`：VR 遥操 `/xr/*` 话题的 ros2 bag 录制 / 回放 / 清理（由 `run.sh` 调用）
 - `release.sh`：发布打包脚本（更新子模块后生成 zip，输出到 `dist/`）
 - `.fa-env.toml`：选择 `run.sh` / `install` 使用 **conda** 还是 **uv**
 - `scripts/fa-env.sh`：环境配置与激活（供上述脚本共用）
@@ -62,7 +63,93 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 ./run.sh
 ```
 
-进入交互菜单后可选择 viser / vr / record / playback 等。
+进入交互菜单后可选择 viser、VR 遥操、VR 录包/回放、interface 关节录放等（见下文 **run.sh 命令**）。
+
+## run.sh 命令
+
+不带参数时进入交互菜单；也可直接传入子命令：
+
+| 分类 | 命令 | 说明 |
+|------|------|------|
+| 可视化 | `viser` | 启动 ros2-viser |
+| VR 遥操 | `vr` | 启动 vr_pose_publisher |
+| VR 录放 | `vr-record [--name 名称]` | 录制 `/xr/*` 到 ros2 bag |
+| VR 录放 | `vr-playback [选项]` | 回放 bag（`--file` `--rate` `--count`） |
+| VR 录放 | `vr-bag-clean [选项]` | 清理 bag（`--all` `--file`） |
+| 关节录放 | `record` | interface 关节快照录制（JSON） |
+| 关节录放 | `playback [json]` | interface 关节快照回放 |
+| 其他 | `versions` | 查看各子库版本号 |
+
+交互菜单编号：
+
+```
+  [可视化]        1) ros2-viser launch
+  [VR 遥操]       2) vr pose launch
+                  3) VR 遥操录包
+                  4) VR 遥操回放
+                  5) VR bag 清理
+  [机器人关节录放] 6) interface 录制
+                  7) interface 回放
+  [其他]          8) 查看各库版本号
+```
+
+### VR 遥操录包 / 回放
+
+将 VR 发布的 `/xr/*` 话题（头显/手柄位姿、按键、摇杆、扳机）录制为 ros2 bag，之后可离线回放以模拟 VR 输入（供 `VRInputHandler` 消费）。底层脚本为 `scripts/vr-bag.sh`，推荐通过 `run.sh` 调用。
+
+**前置条件**
+
+- **录制**：另一终端已运行 `./run.sh vr`，且 VR 设备已连接
+- **回放**：**不要**同时运行 `./run.sh vr`（避免 `/xr/*` 话题冲突）；确保 `arms_target_manager` / `VRInputHandler` 与机器人控制栈已运行；回放前建议将机器人置于 HOLD，结束后再切回 HOLD
+
+**录制**
+
+```bash
+./run.sh vr-record
+./run.sh vr-record --name grasp_demo
+
+# 或直接运行底层脚本
+./scripts/vr-bag.sh record --name grasp_demo
+```
+
+操作流程：输入会话名（可选）→ 按 Enter 开始录制 → 进行 VR 遥操 → 再按 Enter 停止。bag 默认保存到 `xr_bags/`（可用环境变量 `XR_BAG_DIR` 覆盖）。
+
+录制话题：`/xr/head_pose`、`/xr/left_ee_pose`、`/xr/right_ee_pose`、`/xr/controller_state`、`/xr/thumbstick_axes`、`/xr/trigger_values`
+
+**回放**
+
+```bash
+# 交互选择 bag，并询问次数 / 速率
+./run.sh vr-playback
+
+# 指定 bag、速率与重复次数
+./run.sh vr-playback --file xr_bags/grasp_demo_20260707_150930 --rate 1.0 --count 3
+
+# 底层脚本（默认自动启动虚拟 xr_target_node，供 VRInputHandler 检测）
+./scripts/vr-bag.sh playback --no-stub   # 若不需要虚拟节点
+```
+
+**清理**
+
+```bash
+./run.sh vr-bag-clean              # 交互选择要删除的 bag
+./run.sh vr-bag-clean --all        # 删除全部（需确认）
+```
+
+**典型流程**
+
+```bash
+# 终端 1：启动 VR 并遥操
+./run.sh vr
+
+# 终端 2：录包
+./run.sh vr-record
+
+# 之后（关闭 VR 节点）：回放
+./run.sh vr-playback
+```
+
+> **说明**：回放仅重放 VR 输入层。虚拟 `xr_target_node` 只解决「节点存在」检测；手臂是否跟随还取决于 FSM 状态与 UPDATE 模式等控制逻辑，详见 `vr_pose_publisher/README_CN.md` 中的控制流程。
 
 ## 常用命令
 
@@ -95,11 +182,16 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 ./init.sh pypi-mirror
 
 # 启动
+./run.sh
 ./run.sh viser
 ./run.sh vr
+./run.sh vr-record
+./run.sh vr-playback
+./run.sh vr-bag-clean
 ./run.sh record
 ./run.sh playback
 ./run.sh playback /path/to/record.json
+./run.sh versions
 ```
 
 > 说明：交互菜单中的“全部执行”就是顺序执行“初始化子模块 + 创建环境 + 安装”。

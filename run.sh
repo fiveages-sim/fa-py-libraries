@@ -2,33 +2,58 @@
 
 set -euo pipefail
 
+# =============================================================================
+# 初始化
+# =============================================================================
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FA_ENV_BACKEND_OVERRIDE="${FA_ENV_BACKEND:-}"
 # shellcheck source=scripts/fa-env.sh
 source "${ROOT_DIR}/scripts/fa-env.sh"
 FA_ENV_ROOT_DIR="$ROOT_DIR"
 
+# =============================================================================
+# 帮助
+# =============================================================================
+
 usage() {
-  echo "用法: $0 [viser|vr|record|playback [json文件路径]|versions|all]"
+  echo "用法: $0 [命令] [参数...]"
   echo
   echo "不带参数时进入交互菜单。"
   echo "Python 环境由 .fa-env.toml 的 backend 决定（conda | uv），可用 ./init.sh set-backend 切换。"
   echo "临时覆盖: FA_ENV_BACKEND=uv ./run.sh viser"
   echo
-  echo "说明:"
-  echo "  viser      启动 ros2-viser 的 launch.py"
-  echo "  vr         启动 vr_pose_publisher 的 launch.py"
-  echo "  record     启动 interface 的录制模式"
-  echo "  playback   启动 interface 的回放模式（可选传入 json 文件路径）"
-  echo "  versions   一键查看当前各库版本号"
-  echo "  all        交互选择上述任一启动项"
+  echo "可视化:"
+  echo "  viser                    启动 ros2-viser 的 launch.py"
+  echo
+  echo "VR 遥操:"
+  echo "  vr                       启动 vr_pose_publisher 的 launch.py"
+  echo "  vr-record [--name 名称]  录制 /xr/* 话题到 ros2 bag"
+  echo "  vr-playback [选项]       回放 bag（可选 --file --rate --count）"
+  echo "  vr-bag-clean [选项]      清理已录制的 bag"
+  echo
+  echo "机器人关节录放:"
+  echo "  record                   启动 interface 关节快照录制 (JSON)"
+  echo "  playback [json文件路径]  启动 interface 关节快照回放"
+  echo
+  echo "其他:"
+  echo "  versions                 一键查看当前各库版本号"
+  echo "  all                      交互选择上述任一启动项"
 }
+
+# =============================================================================
+# 环境
+# =============================================================================
 
 ensure_python_env() {
   set +u
   fa_env_activate "$ROOT_DIR" || exit 1
   set -u
 }
+
+# =============================================================================
+# 可视化 — ros2-viser
+# =============================================================================
 
 run_viser_launch() {
   local script_path="$ROOT_DIR/ros2-viser/launch.py"
@@ -41,6 +66,10 @@ run_viser_launch() {
   python "$script_path"
 }
 
+# =============================================================================
+# VR 遥操发布 — vr_pose_publisher
+# =============================================================================
+
 run_vr_launch() {
   local script_path="$ROOT_DIR/vr_pose_publisher/launch.py"
   if [[ ! -f "$script_path" ]]; then
@@ -51,6 +80,44 @@ run_vr_launch() {
   echo ">>> 启动 vr pose launch"
   python "$script_path"
 }
+
+# =============================================================================
+# VR 遥操录包 — ros2 bag (/xr/*)
+# =============================================================================
+
+run_vr_bag_record() {
+  local script_path="$ROOT_DIR/scripts/vr-bag.sh"
+  if [[ ! -f "$script_path" ]]; then
+    echo "未找到脚本: $script_path"
+    exit 1
+  fi
+  echo ">>> 启动 VR 遥操录包"
+  bash "$script_path" record "$@"
+}
+
+run_vr_bag_playback() {
+  local script_path="$ROOT_DIR/scripts/vr-bag.sh"
+  if [[ ! -f "$script_path" ]]; then
+    echo "未找到脚本: $script_path"
+    exit 1
+  fi
+  echo ">>> 启动 VR 遥操回放"
+  bash "$script_path" playback "$@"
+}
+
+run_vr_bag_clean() {
+  local script_path="$ROOT_DIR/scripts/vr-bag.sh"
+  if [[ ! -f "$script_path" ]]; then
+    echo "未找到脚本: $script_path"
+    exit 1
+  fi
+  echo ">>> 清理 VR 遥操 bag"
+  bash "$script_path" clean "$@"
+}
+
+# =============================================================================
+# 机器人关节录放 — ros2_robot_interface
+# =============================================================================
 
 run_interface_record() {
   local script_path="$ROOT_DIR/ros2_robot_interface/record/record_playback.py"
@@ -78,6 +145,10 @@ run_interface_playback() {
     python "$script_path" playback
   fi
 }
+
+# =============================================================================
+# 工具
+# =============================================================================
 
 read_project_name_version() {
   local pyproject_file="$1"
@@ -133,26 +204,45 @@ show_library_versions() {
   done
 }
 
+# =============================================================================
+# 交互菜单 & 入口
+# =============================================================================
+
 interactive_menu() {
   fa_env_load_config "$ROOT_DIR"
-  echo "请选择要启动的功能 (backend=$FA_ENV_BACKEND):"
-  echo "  1) ros2-viser launch"
-  echo "  2) vr pose launch"
-  echo "  3) interface record_playback 录制模式"
-  echo "  4) interface record_playback 回放模式"
-  echo "  5) 查看各库版本号"
-  echo "  q) 退出"
-  read -r -p "输入选项 [1/2/3/4/5/q]: " choice
+  echo "请选择要启动的功能 (backend=$FA_ENV_BACKEND)"
+  echo
+  echo "  [可视化]"
+  echo "    1) ros2-viser launch"
+  echo
+  echo "  [VR 遥操]"
+  echo "    2) vr pose launch"
+  echo "    3) VR 遥操录包"
+  echo "    4) VR 遥操回放"
+  echo "    5) VR bag 清理"
+  echo
+  echo "  [机器人关节录放]"
+  echo "    6) interface 录制"
+  echo "    7) interface 回放"
+  echo
+  echo "  [其他]"
+  echo "    8) 查看各库版本号"
+  echo "    q) 退出"
+  echo
+  read -r -p "输入选项 [1-8/q]: " choice
 
   case "$choice" in
     1) run_viser_launch ;;
     2) run_vr_launch ;;
-    3) run_interface_record ;;
-    4)
+    3) run_vr_bag_record ;;
+    4) run_vr_bag_playback ;;
+    5) run_vr_bag_clean ;;
+    6) run_interface_record ;;
+    7)
       read -r -p "可选：输入回放 json 文件路径（留空则启动后自行选择）: " json_file
       run_interface_playback "${json_file:-}"
       ;;
-    5) show_library_versions ;;
+    8) show_library_versions ;;
     q|Q) echo "已退出。" ;;
     *) echo "无效选项。"; exit 1 ;;
   esac
@@ -165,6 +255,15 @@ main() {
       ;;
     vr)
       run_vr_launch
+      ;;
+    vr-record)
+      run_vr_bag_record "${@:2}"
+      ;;
+    vr-playback)
+      run_vr_bag_playback "${@:2}"
+      ;;
+    vr-bag-clean)
+      run_vr_bag_clean "${@:2}"
       ;;
     record)
       run_interface_record
@@ -192,4 +291,4 @@ main() {
   esac
 }
 
-main "${1:-}" "${2:-}"
+main "$@"
