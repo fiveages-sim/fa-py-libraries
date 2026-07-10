@@ -26,12 +26,16 @@ declare -A GITEA_PATH_MAP=(
 
 print_usage() {
   echo "用法: $0 [submodules [--github|--gitea]|update-submodules-main|env [python版本]|install [--conda|--uv]|"
-  echo "      set-backend conda|uv|pypi-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
+  echo "      set-backend conda|uv|install-uv|install-miniconda|pypi-mirror|uv-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
   echo
   echo "环境:"
   echo "  env            按 .fa-env.toml 的 backend 创建环境"
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
+  echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
+  echo "  install-miniconda  安装 Miniconda 到 ~/miniconda3 并关闭 base 自动激活"
+  echo "  pypi-mirror    配置 pip 使用 NJU PyPI 镜像"
+  echo "  uv-mirror      配置 uv 使用清华 PyPI 镜像（backend=uv 时生效）"
   echo "  ros2-workspace 按 backend 写对应 activate 挂钩；--all 则 conda+uv 都写"
   echo "  配置见 .fa-env.toml；个人覆盖: .fa-env.local.toml；临时: FA_ENV_BACKEND=uv"
   echo
@@ -236,6 +240,34 @@ init_submodules() {
   echo ">>> 子模块初始化并切换 main 完成。"
 }
 
+submodules_have_content() {
+  local submodule_paths=()
+  local submodule_path submodule_dir
+
+  while IFS= read -r submodule_path; do
+    submodule_paths+=("$submodule_path")
+  done < <(git -C "$ROOT_DIR" config --file .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
+
+  if [[ ${#submodule_paths[@]} -eq 0 ]]; then
+    return 1
+  fi
+
+  for submodule_path in "${submodule_paths[@]}"; do
+    submodule_dir="$ROOT_DIR/$submodule_path"
+    if [[ ! -d "$submodule_dir" ]]; then
+      return 1
+    fi
+    if ! git -C "$submodule_dir" rev-parse --git-dir >/dev/null 2>&1; then
+      return 1
+    fi
+    if [[ -z "$(ls -A "$submodule_dir" 2>/dev/null)" ]]; then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 update_submodules_to_latest_main() {
   local submodule_paths=()
   local submodule_path
@@ -425,6 +457,86 @@ configure_ros2_workspace_source() {
   echo ">>> run.sh 也会读取同一配置。"
 }
 
+install_miniconda() {
+  local miniconda_dir="${HOME}/miniconda3"
+  local installer="${miniconda_dir}/miniconda.sh"
+  local conda_bin="${miniconda_dir}/bin/conda"
+
+  if [[ -x "$conda_bin" ]]; then
+    echo ">>> Miniconda 已安装: $miniconda_dir ($("$conda_bin" --version))"
+  elif command -v conda >/dev/null 2>&1; then
+    echo ">>> 已检测到 conda: $(command -v conda)（非 ~/miniconda3），跳过 Miniconda 安装。"
+    return 0
+  else
+    echo ">>> 安装 Miniconda 到 $miniconda_dir ..."
+
+    if ! command -v wget >/dev/null 2>&1; then
+      echo "未检测到 wget，请先安装 wget。"
+      exit 1
+    fi
+
+    mkdir -p "$miniconda_dir"
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "$installer"
+    bash "$installer" -b -u -p "$miniconda_dir"
+    rm -f "$installer"
+    echo ">>> Miniconda 安装完成: $miniconda_dir"
+  fi
+
+  export PATH="${miniconda_dir}/bin:${PATH}"
+
+  echo ">>> 配置 conda：初始化 shell 并关闭 base 自动激活..."
+  # shellcheck disable=SC1091
+  source "${miniconda_dir}/bin/activate"
+  conda init --all
+  conda config --set auto_activate_base False
+  echo ">>> conda 配置完成（auto_activate_base=False）。"
+  echo ">>> 若当前 shell 找不到 conda，请重新打开终端。"
+}
+
+install_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    echo ">>> uv 已安装: $(command -v uv) ($(uv --version))"
+    return 0
+  fi
+
+  echo ">>> 安装 uv..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+
+  # 安装脚本默认写入 ~/.local/bin
+  if [[ -d "${HOME}/.local/bin" ]]; then
+    export PATH="${HOME}/.local/bin:${PATH}"
+  fi
+
+  if command -v uv >/dev/null 2>&1; then
+    echo ">>> uv 安装完成: $(command -v uv) ($(uv --version))"
+  else
+    echo ">>> uv 安装脚本已执行，但未在当前 PATH 中找到 uv。"
+    echo ">>> 请重新打开终端，或将 ~/.local/bin 加入 PATH。"
+    exit 1
+  fi
+}
+
+configure_uv_mirror() {
+  local uv_config_dir="$HOME/.config/uv"
+  local uv_config_file="$uv_config_dir/uv.toml"
+
+  mkdir -p "$uv_config_dir"
+
+  if [[ -f "$uv_config_file" ]]; then
+    cp "$uv_config_file" "$uv_config_file.bak.$(date +%Y%m%d%H%M%S)"
+    echo ">>> 已备份现有配置: $uv_config_file.bak.<timestamp>"
+  fi
+
+  cat > "$uv_config_file" <<'EOF'
+[[index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+EOF
+
+  echo ">>> 已配置 uv PyPI 镜像为清华: https://pypi.tuna.tsinghua.edu.cn/simple"
+  echo ">>> 配置文件: $uv_config_file"
+}
+
 configure_nju_pypi_mirror() {
   local pip_config_dir="$HOME/.config/pip"
   local pip_config_file="$pip_config_dir/pip.conf"
@@ -462,7 +574,11 @@ create_env_for_configured_backend() {
 run_all() {
   local python_version="${1:-}"
   local source_type="${2:-github}"
-  init_submodules "$source_type"
+  if submodules_have_content; then
+    echo ">>> 子模块已存在内容，跳过初始化。"
+  else
+    init_submodules "$source_type"
+  fi
   create_env_for_configured_backend "$python_version"
   install_projects
 }
@@ -471,8 +587,10 @@ choose_source_type_menu() {
   local source_choice
   SOURCE_TYPE_SELECTED="github"
   echo "请选择子模块源:"
-  echo "  1) GitHub"
-  echo "  2) Gitea"
+  echo
+  echo "    1) GitHub"
+  echo "    2) Gitea"
+  echo
   read -r -p "输入选项 [1/2]（默认 1）: " source_choice
   case "${source_choice:-1}" in
     1) SOURCE_TYPE_SELECTED="github" ;;
@@ -481,6 +599,88 @@ choose_source_type_menu() {
       echo "无效选项，使用 GitHub。"
       SOURCE_TYPE_SELECTED="github"
       ;;
+  esac
+}
+
+interactive_menu() {
+  fa_env_load_config "$ROOT_DIR"
+  echo "请选择要执行的操作 (backend=$FA_ENV_BACKEND)"
+  echo
+  echo "  [子模块]"
+  echo "    1) 初始化子模块"
+  echo "    2) 更新所有子模块到最新 main"
+  echo
+  echo "  [环境与安装]"
+  echo "    3) 按当前 backend 创建环境"
+  echo "    4) 安装 interface / viser / vr"
+  echo
+  echo "  [一键执行]"
+  echo "    5) 全部执行（子模块 + 环境 + 安装）"
+  echo
+  echo "  [配置]"
+  if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
+    echo "    6) 安装 Miniconda"
+    echo "    7) 配置 NJU PyPI 镜像（pip）"
+  else
+    echo "    6) 安装 uv"
+    echo "    7) 配置 uv PyPI 镜像（清华）"
+  fi
+  echo "    8) 配置 ROS2 工作空间"
+  echo "    9) 切换 backend (conda/uv)"
+  echo
+  echo "  [其他]"
+  echo "    q) 退出"
+  echo
+  read -r -p "输入选项 [1-9/q]: " choice
+
+  case "$choice" in
+    1)
+      choose_source_type_menu
+      init_submodules "$SOURCE_TYPE_SELECTED"
+      ;;
+    2)
+      update_submodules_to_latest_main
+      ;;
+    3)
+      read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
+      create_env_for_configured_backend "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
+      ;;
+    4)
+      install_projects
+      ;;
+    5)
+      read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
+      if submodules_have_content; then
+        run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
+      else
+        choose_source_type_menu
+        run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
+      fi
+      ;;
+    6)
+      if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
+        install_miniconda
+      else
+        install_uv
+      fi
+      ;;
+    7)
+      if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
+        configure_nju_pypi_mirror
+      else
+        configure_uv_mirror
+      fi
+      ;;
+    8)
+      configure_ros2_workspace_source
+      ;;
+    9)
+      read -r -p "输入 backend [conda/uv]（当前 $FA_ENV_BACKEND）: " backend_choice
+      backend_choice="${backend_choice:-$FA_ENV_BACKEND}"
+      fa_env_set_backend "$backend_choice"
+      ;;
+    q|Q) echo "已退出。" ;;
+    *) echo "无效选项。"; exit 1 ;;
   esac
 }
 
@@ -508,8 +708,17 @@ main() {
       parse_install_backend_args "$@"
       install_projects
       ;;
+    install-uv)
+      install_uv
+      ;;
+    install-miniconda)
+      install_miniconda
+      ;;
     pypi-mirror)
       configure_nju_pypi_mirror
+      ;;
+    uv-mirror)
+      configure_uv_mirror
       ;;
     ros2-workspace)
       configure_ros2_workspace_source "$@"
@@ -537,55 +746,7 @@ main() {
       run_all "$python_version_arg" "$(parse_source_type "${source_args[@]}")"
       ;;
     "")
-      fa_env_load_config "$ROOT_DIR"
-      echo "请选择操作:"
-      echo "  当前 backend: $FA_ENV_BACKEND（见 .fa-env.toml）"
-      echo "  1) 初始化子模块"
-      echo "  2) 按当前 backend 创建环境"
-      echo "  3) 安装 interface / viser / vr（按 backend）"
-      echo "  -------------------- 执行链路 --------------------"
-      echo "  4) 全部执行（顺序执行 1 + 2 + 3）"
-      echo "  5) 更新所有子模块到最新 main"
-      echo "  -------------------- 配置 --------------------"
-      echo "  6) 配置 NJU PyPI 镜像"
-      echo "  7) 配置 ROS2 工作空间（.fa-env.toml + 可选 conda hook）"
-      echo "  8) 切换 run.sh 使用的 backend (conda/uv)"
-      echo "  q) 退出"
-      read -r -p "输入选项 [1-8/q]: " choice
-      case "$choice" in
-        1)
-          choose_source_type_menu
-          init_submodules "$SOURCE_TYPE_SELECTED"
-          ;;
-        2)
-          read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
-          create_env_for_configured_backend "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
-          ;;
-        3)
-          install_projects
-          ;;
-        4)
-          read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
-          choose_source_type_menu
-          run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
-          ;;
-        5)
-          update_submodules_to_latest_main
-          ;;
-        6)
-          configure_nju_pypi_mirror
-          ;;
-        7)
-          configure_ros2_workspace_source
-          ;;
-        8)
-          read -r -p "输入 backend [conda/uv]（当前 $FA_ENV_BACKEND）: " backend_choice
-          backend_choice="${backend_choice:-$FA_ENV_BACKEND}"
-          fa_env_set_backend "$backend_choice"
-          ;;
-        q|Q) echo "已退出。" ;;
-        *) echo "无效选项。"; exit 1 ;;
-      esac
+      interactive_menu
       ;;
     -h|--help|help)
       print_usage
