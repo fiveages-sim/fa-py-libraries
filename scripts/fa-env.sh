@@ -10,6 +10,7 @@ FA_ENV_BACKEND_OVERRIDE="${FA_ENV_BACKEND_OVERRIDE:-}"
 FA_ENV_CONDA_NAME=""
 FA_ENV_UV_VENV=""
 FA_ENV_ROS2_WORKSPACE=""
+FA_ENV_XRT_PYBIND_DIR=""
 
 fa_env_root_dir() {
   if [[ -n "${FA_ENV_ROOT_DIR:-}" ]]; then
@@ -187,6 +188,7 @@ fa_env_load_config() {
   FA_ENV_CONDA_NAME="$FA_ENV_DEFAULT_CONDA_NAME"
   FA_ENV_UV_VENV="$FA_ENV_DEFAULT_UV_VENV"
   FA_ENV_ROS2_WORKSPACE=""
+  FA_ENV_XRT_PYBIND_DIR=""
 
   fa_env_ensure_config_file
   cfg="$(fa_env_primary_config_file)"
@@ -203,6 +205,9 @@ fa_env_load_config() {
 
     file_backend="$(fa_env_toml_get "$cfg" "ros2" "workspace" 2>/dev/null || true)"
     [[ -n "$file_backend" ]] && FA_ENV_ROS2_WORKSPACE="$file_backend"
+
+    file_backend="$(fa_env_toml_get "$cfg" "xrobotoolkit" "pybind_dir" 2>/dev/null || true)"
+    [[ -n "$file_backend" ]] && FA_ENV_XRT_PYBIND_DIR="$file_backend"
   fi
 
   if [[ -n "$user_backend" ]]; then
@@ -212,6 +217,19 @@ fa_env_load_config() {
 
 fa_env_uv_venv_path() {
   fa_env_expand_path "${FA_ENV_UV_VENV:-$FA_ENV_DEFAULT_UV_VENV}"
+}
+
+fa_env_xrt_pybind_path() {
+  # Prefer path relative to vr_pose_publisher; allow absolute override via config.
+  local raw="${FA_ENV_XRT_PYBIND_DIR:-dependencies/XRoboToolkit-PC-Service-Pybind}"
+  local root vr_dir
+  root="$(fa_env_root_dir)"
+  vr_dir="${root}/vr_pose_publisher"
+  if [[ "$raw" = /* ]]; then
+    echo "$raw"
+  else
+    echo "${vr_dir}/${raw}"
+  fi
 }
 
 fa_env_set_toml_value() {

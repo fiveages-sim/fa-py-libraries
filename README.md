@@ -72,7 +72,8 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 | 分类 | 命令 | 说明 |
 |------|------|------|
 | 可视化 | `viser` | 启动 ros2-viser |
-| VR 遥操 | `vr` | 启动 vr_pose_publisher |
+| VR 遥操 | `vr` | 启动 vr_pose_publisher（Vuer/WebXR） |
+| VR 遥操 | `vr-xrt` | 启动 vr_pose_publisher（XRoboToolkit SDK） |
 | VR 录放 | `vr-record [--name 名称]` | 录制 `/xr/*` 到 ros2 bag |
 | VR 录放 | `vr-playback [选项]` | 回放 bag（`--file` `--rate` `--count`） |
 | VR 录放 | `vr-bag-clean [选项]` | 清理 bag（`--all` `--file`） |
@@ -84,14 +85,35 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 ```
   [可视化]        1) ros2-viser launch
-  [VR 遥操]       2) vr pose launch
-                  3) VR 遥操录包
-                  4) VR 遥操回放
-                  5) VR bag 清理
-  [机器人关节录放] 6) interface 录制
-                  7) interface 回放
-  [其他]          8) 查看各库版本号
+  [VR 遥操]       2) vr pose launch (Vuer/WebXR)
+                  3) vr pose launch (XRoboToolkit)
+                  4) VR 遥操录包
+                  5) VR 遥操回放
+                  6) VR bag 清理
+  [机器人关节录放] 7) interface 录制
+                  8) interface 回放
+  [其他]          9) 查看各库版本号
 ```
+
+### XRoboToolkit 后端（可选）
+
+与默认的 Vuer/WebXR 并列，可用 Pico 官方 **XRoboToolkit App + PC Service** 作为输入，发布同一套 `/xr/*` 话题（无 IK）。
+
+```bash
+# 一次性安装 SDK（依赖构建在 vr_pose_publisher/dependencies/）
+./init.sh install-xrobotoolkit
+# 或在子模块内（需已激活 Python 环境）:
+#   cd vr_pose_publisher && bash setup_xrobotoolkit.sh
+
+# 启动（需本机 PC Service 已运行，Pico App 已连接）
+./run.sh vr-xrt
+```
+
+| 对比 | `./run.sh vr` | `./run.sh vr-xrt` |
+|------|---------------|-------------------|
+| 输入 | 头显浏览器 WebXR（Vuer） | XRoboToolkit SDK |
+| 头显 App | 浏览器 | XRoboToolkit Unity App |
+| 发布话题 | `/xr/*` | `/xr/*`（相同契约） |
 
 ### VR 遥操录包 / 回放
 
@@ -99,8 +121,8 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 **前置条件**
 
-- **录制**：另一终端已运行 `./run.sh vr`，且 VR 设备已连接
-- **回放**：**不要**同时运行 `./run.sh vr`（避免 `/xr/*` 话题冲突）；确保 `arms_target_manager` / `VRInputHandler` 与机器人控制栈已运行；回放前建议将机器人置于 HOLD，结束后再切回 HOLD
+- **录制**：另一终端已运行 `./run.sh vr` **或** `./run.sh vr-xrt`，且 VR 设备已连接
+- **回放**：**不要**同时运行 `./run.sh vr` / `./run.sh vr-xrt`（避免 `/xr/*` 话题冲突）；确保 `arms_target_manager` / `VRInputHandler` 与机器人控制栈已运行；回放前建议将机器人置于 HOLD，结束后再切回 HOLD
 
 **录制**
 
@@ -139,8 +161,10 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 **典型流程**
 
 ```bash
-# 终端 1：启动 VR 并遥操
+# 终端 1：启动 VR 并遥操（Vuer 或 XRoboToolkit 二选一）
 ./run.sh vr
+# 或
+./run.sh vr-xrt
 
 # 终端 2：录包
 ./run.sh vr-record
@@ -174,6 +198,9 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 ./init.sh install --uv
 ./init.sh install --conda
 
+# 可选：安装 XRoboToolkit SDK（VR XRT 后端）
+./init.sh install-xrobotoolkit
+
 # 配置 ROS2 工作空间（写入 .fa-env.toml + 按 backend 写 activate 挂钩）
 ./init.sh ros2-workspace
 # 若 conda 与 uv 都要挂钩：./init.sh ros2-workspace --all
@@ -185,6 +212,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 ./run.sh
 ./run.sh viser
 ./run.sh vr
+./run.sh vr-xrt
 ./run.sh vr-record
 ./run.sh vr-playback
 ./run.sh vr-bag-clean

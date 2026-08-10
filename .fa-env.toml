@@ -14,3 +14,7 @@ venv = ".venv"
 # 配置后 run.sh 激活环境时会 source 该工作空间的 install/setup.bash
 # workspace = "~/ros2_ws"
 workspace = "~/ros2_ws"
+
+[xrobotoolkit]
+# 相对 vr_pose_publisher 的 pybind 目录（也可写绝对路径）
+# pybind_dir = "dependencies/XRoboToolkit-PC-Service-Pybind"

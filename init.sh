@@ -26,11 +26,13 @@ declare -A GITEA_PATH_MAP=(
 
 print_usage() {
   echo "用法: $0 [submodules [--github|--gitea]|update-submodules-main|env [python版本]|install [--conda|--uv]|"
-  echo "      set-backend conda|uv|install-uv|install-miniconda|pypi-mirror|uv-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
+  echo "      install-xrobotoolkit [--conda|--uv]|set-backend conda|uv|install-uv|install-miniconda|"
+  echo "      pypi-mirror|uv-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
   echo
   echo "环境:"
   echo "  env            按 .fa-env.toml 的 backend 创建环境"
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
+  echo "  install-xrobotoolkit  安装 xrobotoolkit_sdk（构建到 vr_pose_publisher/dependencies/）"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
   echo "  install-miniconda  安装 Miniconda 到 ~/miniconda3 并关闭 base 自动激活"
@@ -415,6 +417,39 @@ install_projects() {
   echo ">>> 安装完成。"
 }
 
+install_xrobotoolkit() {
+  local vr_dir="$ROOT_DIR/vr_pose_publisher"
+  local setup_script="$vr_dir/setup_xrobotoolkit.sh"
+  local pybind_dir
+
+  fa_env_load_config "$ROOT_DIR"
+  if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
+    FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
+  fi
+
+  if [[ ! -d "$vr_dir" ]]; then
+    echo "未找到目录: $vr_dir"
+    echo "请先执行子模块初始化与 ./init.sh install。"
+    exit 1
+  fi
+  if [[ ! -f "$setup_script" ]]; then
+    echo "未找到脚本: $setup_script"
+    exit 1
+  fi
+
+  pybind_dir="$(fa_env_xrt_pybind_path)"
+  echo ">>> 使用 backend=$FA_ENV_BACKEND 安装 XRoboToolkit SDK"
+  echo ">>> 安装脚本: $setup_script"
+  echo ">>> pybind 目录（相对 vr_pose_publisher）: $pybind_dir"
+
+  (
+    set +u
+    fa_env_activate "$ROOT_DIR"
+    export XRT_PYBIND_DIR="$pybind_dir"
+    bash "$setup_script"
+  )
+}
+
 configure_ros2_workspace_source() {
   local ws_input ws_stored apply_all=0
   local arg
@@ -613,25 +648,26 @@ interactive_menu() {
   echo "  [环境与安装]"
   echo "    3) 按当前 backend 创建环境"
   echo "    4) 安装 interface / viser / vr"
+  echo "    5) 安装 XRoboToolkit SDK（VR XRT 后端）"
   echo
   echo "  [一键执行]"
-  echo "    5) 全部执行（子模块 + 环境 + 安装）"
+  echo "    6) 全部执行（子模块 + 环境 + 安装）"
   echo
   echo "  [配置]"
   if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
-    echo "    6) 安装 Miniconda"
-    echo "    7) 配置 NJU PyPI 镜像（pip）"
+    echo "    7) 安装 Miniconda"
+    echo "    8) 配置 NJU PyPI 镜像（pip）"
   else
-    echo "    6) 安装 uv"
-    echo "    7) 配置 uv PyPI 镜像（清华）"
+    echo "    7) 安装 uv"
+    echo "    8) 配置 uv PyPI 镜像（清华）"
   fi
-  echo "    8) 配置 ROS2 工作空间"
-  echo "    9) 切换 backend (conda/uv)"
+  echo "    9) 配置 ROS2 工作空间"
+  echo "   10) 切换 backend (conda/uv)"
   echo
   echo "  [其他]"
   echo "    q) 退出"
   echo
-  read -r -p "输入选项 [1-9/q]: " choice
+  read -r -p "输入选项 [1-10/q]: " choice
 
   case "$choice" in
     1)
@@ -649,6 +685,9 @@ interactive_menu() {
       install_projects
       ;;
     5)
+      install_xrobotoolkit
+      ;;
+    6)
       read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
       if submodules_have_content; then
         run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
@@ -657,24 +696,24 @@ interactive_menu() {
         run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
       fi
       ;;
-    6)
+    7)
       if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
         install_miniconda
       else
         install_uv
       fi
       ;;
-    7)
+    8)
       if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
         configure_nju_pypi_mirror
       else
         configure_uv_mirror
       fi
       ;;
-    8)
+    9)
       configure_ros2_workspace_source
       ;;
-    9)
+    10)
       read -r -p "输入 backend [conda/uv]（当前 $FA_ENV_BACKEND）: " backend_choice
       backend_choice="${backend_choice:-$FA_ENV_BACKEND}"
       fa_env_set_backend "$backend_choice"
@@ -707,6 +746,10 @@ main() {
     install)
       parse_install_backend_args "$@"
       install_projects
+      ;;
+    install-xrobotoolkit)
+      parse_install_backend_args "$@"
+      install_xrobotoolkit
       ;;
     install-uv)
       install_uv
