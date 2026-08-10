@@ -228,22 +228,37 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 ## 发布打包
 
-使用 `release.sh` 将仓库内容打成 zip，便于分发或离线部署：
+使用 `release.sh` 将精简源码打成 zip（临时目录 staging，不改动工作区），便于分发或离线部署。默认**不**打入 `dependencies/`、本地环境与录包数据；现场再按需安装。
 
 ```bash
-# 默认：先更新三个子模块到 origin/main 最新提交，再打包
+# 交互菜单（选 package / package-no-git）
 ./release.sh
 
-# 指定输出路径
+# 推荐：不含 .git，体积更小
+./release.sh --package-no-git
+
+# 含 .git（主仓 + 已检出的子模块），便于现场 git pull
+./release.sh --package
+
+# 指定输出路径（等价 package-no-git 到该路径）
 ./release.sh -o /path/to/fa-py-libraries.zip
 
 # 不拉取远程，按当前检出直接打包（离线场景）
-./release.sh --skip-submodules
+./release.sh --package-no-git --skip-submodules
 ```
 
-- 默认输出：`dist/fa-py-libraries-<时间戳>.zip`（`dist/` 已加入 `.gitignore`）
-- 打包时会排除：`.idea/`、`.venv/`、`venv/`、`dist/`
-- 需要能访问子模块远程时，请勿加 `--skip-submodules`
+- 默认输出：`dist/fa-py-libraries-<时间戳>[_nogit].zip`（`dist/` 已加入 `.gitignore`）
+- **始终排除**：`.venv/`、`venv/`、`.idea/`、`.vscode/`、`dist/`、`**/dependencies/`、`xr_bags/`、`joint_records/`、`*.pem`、`__pycache__/`、`*.egg-info/`、`.fa-env.local.toml`
+- **`--package-no-git` 额外排除**：`.git/`（含子模块内 `.git`）
+- **包含**：根脚本（`init.sh` / `run.sh` / `release.sh` / `scripts/`）、`.fa-env.toml`、`README.md`、`.gitmodules`，以及三子模块源码（不含其 `dependencies/`）
+- 需要能访问子模块远程时，请勿加 `--skip-submodules`（默认会先 `./init.sh submodules`）
+
+现场解压后：
+
+```bash
+./init.sh install
+# 可选（VR XRT）：./init.sh install-xrobotoolkit-pc-service && ./init.sh install-xrobotoolkit
+```
 
 ## 说明
 
