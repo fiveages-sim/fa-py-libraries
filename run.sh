@@ -96,7 +96,7 @@ run_vr_xrt_launch() {
     exit 1
   fi
   echo ">>> 启动 vr pose launch (XRoboToolkit)"
-  echo ">>> 请确认: PC Service 已运行，Pico App 已连接"
+  echo ">>> 请确认: PC Service 已运行（应用菜单 XRoboToolkit-PC-Service），Pico App 已连接"
   python "$script_path"
 }
 

@@ -97,15 +97,16 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 ### XRoboToolkit 后端（可选）
 
-与默认的 Vuer/WebXR 并列，可用 Pico 官方 **XRoboToolkit App + PC Service** 作为输入，发布同一套 `/xr/*` 话题（无 IK）。
+与默认的 Vuer/WebXR 并列，可用 Pico **XRoboToolkit App + PC Service** 作为输入，发布同一套 `/xr/*` 话题（无 IK）。官方组件说明见 [XR-Robotics](https://github.com/XR-Robotics)。
 
 ```bash
-# 一次性安装 SDK（依赖构建在 vr_pose_publisher/dependencies/）
-./init.sh install-xrobotoolkit
-# 或在子模块内（需已激活 Python 环境）:
-#   cd vr_pose_publisher && bash setup_xrobotoolkit.sh
+# 1) 安装官方 PC Service deb（按 Ubuntu 22.04/24.04 自动选择）
+./init.sh install-xrobotoolkit-pc-service
 
-# 启动（需本机 PC Service 已运行，Pico App 已连接）
+# 2) 安装 Python SDK（会先检测 PC Service；构建产物在 vr_pose_publisher/dependencies/）
+./init.sh install-xrobotoolkit
+
+# 3) 启动 PC Service（推荐：应用菜单打开 “XRoboToolkit-PC-Service”），再启动发布节点
 ./run.sh vr-xrt
 ```
 
@@ -198,7 +199,8 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 ./init.sh install --uv
 ./init.sh install --conda
 
-# 可选：安装 XRoboToolkit SDK（VR XRT 后端）
+# 可选：安装 XRoboToolkit PC Service deb + Python SDK（VR XRT 后端）
+./init.sh install-xrobotoolkit-pc-service
 ./init.sh install-xrobotoolkit
 
 # 配置 ROS2 工作空间（写入 .fa-env.toml + 按 backend 写 activate 挂钩）
