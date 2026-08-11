@@ -72,7 +72,8 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 | 分类 | 命令 | 说明 |
 |------|------|------|
 | 可视化 | `viser` | 启动 ros2-viser |
-| VR 遥操 | `vr` | 启动 vr_pose_publisher |
+| VR 遥操 | `vr` | 启动 vr_pose_publisher（Vuer/WebXR） |
+| VR 遥操 | `vr-xrt` | 启动 vr_pose_publisher（XRoboToolkit SDK） |
 | VR 录放 | `vr-record [--name 名称]` | 录制 `/xr/*` 到 ros2 bag |
 | VR 录放 | `vr-playback [选项]` | 回放 bag（`--file` `--rate` `--count`） |
 | VR 录放 | `vr-bag-clean [选项]` | 清理 bag（`--all` `--file`） |
@@ -84,14 +85,36 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 ```
   [可视化]        1) ros2-viser launch
-  [VR 遥操]       2) vr pose launch
-                  3) VR 遥操录包
-                  4) VR 遥操回放
-                  5) VR bag 清理
-  [机器人关节录放] 6) interface 录制
-                  7) interface 回放
-  [其他]          8) 查看各库版本号
+  [VR 遥操]       2) vr pose launch (Vuer/WebXR)
+                  3) vr pose launch (XRoboToolkit)
+                  4) VR 遥操录包
+                  5) VR 遥操回放
+                  6) VR bag 清理
+  [机器人关节录放] 7) interface 录制
+                  8) interface 回放
+  [其他]          9) 查看各库版本号
 ```
+
+### XRoboToolkit 后端（可选）
+
+与默认的 Vuer/WebXR 并列，可用 Pico **XRoboToolkit App + PC Service** 作为输入，发布同一套 `/xr/*` 话题（无 IK）。官方组件说明见 [XR-Robotics](https://github.com/XR-Robotics)。
+
+```bash
+# 1) 安装官方 PC Service deb（按 Ubuntu 22.04/24.04 自动选择）
+./init.sh install-xrobotoolkit-pc-service
+
+# 2) 安装 Python SDK（会先检测 PC Service；构建产物在 vr_pose_publisher/dependencies/）
+./init.sh install-xrobotoolkit
+
+# 3) 启动 PC Service（推荐：应用菜单打开 “XRoboToolkit-PC-Service”），再启动发布节点
+./run.sh vr-xrt
+```
+
+| 对比 | `./run.sh vr` | `./run.sh vr-xrt` |
+|------|---------------|-------------------|
+| 输入 | 头显浏览器 WebXR（Vuer） | XRoboToolkit SDK |
+| 头显 App | 浏览器 | XRoboToolkit Unity App |
+| 发布话题 | `/xr/*` | `/xr/*`（相同契约） |
 
 ### VR 遥操录包 / 回放
 
@@ -99,8 +122,8 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 **前置条件**
 
-- **录制**：另一终端已运行 `./run.sh vr`，且 VR 设备已连接
-- **回放**：**不要**同时运行 `./run.sh vr`（避免 `/xr/*` 话题冲突）；确保 `arms_target_manager` / `VRInputHandler` 与机器人控制栈已运行；回放前建议将机器人置于 HOLD，结束后再切回 HOLD
+- **录制**：另一终端已运行 `./run.sh vr` **或** `./run.sh vr-xrt`，且 VR 设备已连接
+- **回放**：**不要**同时运行 `./run.sh vr` / `./run.sh vr-xrt`（避免 `/xr/*` 话题冲突）；确保 `arms_target_manager` / `VRInputHandler` 与机器人控制栈已运行；回放前建议将机器人置于 HOLD，结束后再切回 HOLD
 
 **录制**
 
@@ -139,8 +162,10 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 **典型流程**
 
 ```bash
-# 终端 1：启动 VR 并遥操
+# 终端 1：启动 VR 并遥操（Vuer 或 XRoboToolkit 二选一）
 ./run.sh vr
+# 或
+./run.sh vr-xrt
 
 # 终端 2：录包
 ./run.sh vr-record
@@ -174,6 +199,10 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 ./init.sh install --uv
 ./init.sh install --conda
 
+# 可选：安装 XRoboToolkit PC Service deb + Python SDK（VR XRT 后端）
+./init.sh install-xrobotoolkit-pc-service
+./init.sh install-xrobotoolkit
+
 # 配置 ROS2 工作空间（写入 .fa-env.toml + 按 backend 写 activate 挂钩）
 ./init.sh ros2-workspace
 # 若 conda 与 uv 都要挂钩：./init.sh ros2-workspace --all
@@ -185,6 +214,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 ./run.sh
 ./run.sh viser
 ./run.sh vr
+./run.sh vr-xrt
 ./run.sh vr-record
 ./run.sh vr-playback
 ./run.sh vr-bag-clean
@@ -198,22 +228,37 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 ## 发布打包
 
-使用 `release.sh` 将仓库内容打成 zip，便于分发或离线部署：
+使用 `release.sh` 将精简源码打成 zip（临时目录 staging，不改动工作区），便于分发或离线部署。默认**不**打入 `dependencies/`、本地环境与录包数据；现场再按需安装。
 
 ```bash
-# 默认：先更新三个子模块到 origin/main 最新提交，再打包
+# 交互菜单（选 package / package-no-git）
 ./release.sh
 
-# 指定输出路径
+# 推荐：不含 .git，体积更小
+./release.sh --package-no-git
+
+# 含 .git（主仓 + 已检出的子模块），便于现场 git pull
+./release.sh --package
+
+# 指定输出路径（等价 package-no-git 到该路径）
 ./release.sh -o /path/to/fa-py-libraries.zip
 
 # 不拉取远程，按当前检出直接打包（离线场景）
-./release.sh --skip-submodules
+./release.sh --package-no-git --skip-submodules
 ```
 
-- 默认输出：`dist/fa-py-libraries-<时间戳>.zip`（`dist/` 已加入 `.gitignore`）
-- 打包时会排除：`.idea/`、`.venv/`、`venv/`、`dist/`
-- 需要能访问子模块远程时，请勿加 `--skip-submodules`
+- 默认输出：`dist/fa-py-libraries-<时间戳>[_nogit].zip`（`dist/` 已加入 `.gitignore`）
+- **始终排除**：`.venv/`、`venv/`、`.idea/`、`.vscode/`、`dist/`、`**/dependencies/`、`xr_bags/`、`joint_records/`、`*.pem`、`__pycache__/`、`*.egg-info/`、`.fa-env.local.toml`
+- **`--package-no-git` 额外排除**：`.git/`（含子模块内 `.git`）
+- **包含**：根脚本（`init.sh` / `run.sh` / `release.sh` / `scripts/`）、`.fa-env.toml`、`README.md`、`.gitmodules`，以及三子模块源码（不含其 `dependencies/`）
+- 需要能访问子模块远程时，请勿加 `--skip-submodules`（默认会先 `./init.sh submodules`）
+
+现场解压后：
+
+```bash
+./init.sh install
+# 可选（VR XRT）：./init.sh install-xrobotoolkit-pc-service && ./init.sh install-xrobotoolkit
+```
 
 ## 说明
 

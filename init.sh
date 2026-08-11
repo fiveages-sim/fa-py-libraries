@@ -26,11 +26,15 @@ declare -A GITEA_PATH_MAP=(
 
 print_usage() {
   echo "用法: $0 [submodules [--github|--gitea]|update-submodules-main|env [python版本]|install [--conda|--uv]|"
-  echo "      set-backend conda|uv|install-uv|install-miniconda|pypi-mirror|uv-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
+  echo "      install-xrobotoolkit [--conda|--uv]|install-xrobotoolkit-pc-service|"
+  echo "      set-backend conda|uv|install-uv|install-miniconda|"
+  echo "      pypi-mirror|uv-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
   echo
   echo "环境:"
   echo "  env            按 .fa-env.toml 的 backend 创建环境"
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
+  echo "  install-xrobotoolkit-pc-service  安装官方 XRoboToolkit-PC-Service deb（按 Ubuntu 版本下载）"
+  echo "  install-xrobotoolkit  安装 PC Service（若未装）+ xrobotoolkit_sdk（vr_pose_publisher/dependencies/）"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
   echo "  install-miniconda  安装 Miniconda 到 ~/miniconda3 并关闭 base 自动激活"
@@ -415,6 +419,156 @@ install_projects() {
   echo ">>> 安装完成。"
 }
 
+# Official PC Service debs from https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases
+# See also org overview: https://github.com/XR-Robotics
+XRT_PCS_RELEASE_BASE="https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases/download/v1.0.0"
+
+detect_ubuntu_version_id() {
+  if command -v lsb_release >/dev/null 2>&1; then
+    lsb_release -rs
+    return 0
+  fi
+  if [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    echo "${VERSION_ID:-}"
+    return 0
+  fi
+  echo ""
+}
+
+xrobotoolkit_pc_service_installed() {
+  [[ -x /opt/apps/roboticsservice/runService.sh ]] && return 0
+  dpkg -l 2>/dev/null | grep -qiE 'xrobotoolkit.*pc.?service|roboticsservice' && return 0
+  return 1
+}
+
+install_xrobotoolkit_pc_service() {
+  local vr_dir="$ROOT_DIR/vr_pose_publisher"
+  local deb_dir="$vr_dir/dependencies/debs"
+  local os_ver deb_name deb_url deb_path force=0
+  local arg
+
+  for arg in "$@"; do
+    case "$arg" in
+      --force) force=1 ;;
+      *)
+        echo "未知参数: $arg（支持 --force）"
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ ! -d "$vr_dir" ]]; then
+    echo "未找到目录: $vr_dir"
+    echo "请先执行子模块初始化。"
+    exit 1
+  fi
+
+  if [[ "$force" -eq 0 ]] && xrobotoolkit_pc_service_installed; then
+  echo ">>> 检测到 XRoboToolkit PC Service 已安装（/opt/apps/roboticsservice 或 dpkg），跳过。"
+  echo ">>> 启动（推荐）: 应用菜单打开 XRoboToolkit-PC-Service"
+  echo ">>> 命令行备选: /opt/apps/roboticsservice/runService.sh"
+  echo ">>> 强制重装: $0 install-xrobotoolkit-pc-service --force"
+    return 0
+  fi
+
+  os_ver="$(detect_ubuntu_version_id)"
+  case "$os_ver" in
+    22.04)
+      deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb"
+      ;;
+    24.04)
+      deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_24.04_amd64.deb"
+      ;;
+    *)
+      echo ">>> 当前系统版本: ${os_ver:-unknown}"
+      echo ">>> 官方 amd64 deb 仅提供 Ubuntu 22.04 / 24.04（见 XR-Robotics releases）。"
+      read -r -p "输入要下载的版本 [22.04/24.04]（默认 24.04）: " os_ver
+      os_ver="${os_ver:-24.04}"
+      case "$os_ver" in
+        22.04) deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb" ;;
+        24.04) deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_24.04_amd64.deb" ;;
+        *)
+          echo "不支持的版本: $os_ver"
+          exit 1
+          ;;
+      esac
+      ;;
+  esac
+
+  deb_url="${XRT_PCS_RELEASE_BASE}/${deb_name}"
+  deb_path="${deb_dir}/${deb_name}"
+  mkdir -p "$deb_dir"
+
+  echo ">>> 安装 XRoboToolkit-PC-Service（官方 deb）"
+  echo ">>> 参考: https://github.com/XR-Robotics"
+  echo ">>> Release: https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases/tag/v1.0.0"
+  echo ">>> 包: $deb_name"
+  echo ">>> 保存到: $deb_path（相对 vr_pose_publisher）"
+
+  if [[ ! -f "$deb_path" ]]; then
+    if command -v wget >/dev/null 2>&1; then
+      wget -O "$deb_path" "$deb_url"
+    elif command -v curl >/dev/null 2>&1; then
+      curl -fL -o "$deb_path" "$deb_url"
+    else
+      echo "需要 wget 或 curl 下载 deb。"
+      exit 1
+    fi
+  else
+    echo ">>> 已存在 deb 文件，跳过下载。"
+  fi
+
+  echo ">>> 执行: sudo dpkg -i $deb_path"
+  sudo dpkg -i "$deb_path" || {
+    echo ">>> dpkg 报错，尝试修复依赖: sudo apt-get install -f -y"
+    sudo apt-get install -f -y
+    sudo dpkg -i "$deb_path"
+  }
+
+  echo ">>> PC Service 安装完成。"
+  echo ">>> 启动（推荐）: 应用菜单打开 XRoboToolkit-PC-Service"
+  echo ">>> 命令行备选: /opt/apps/roboticsservice/runService.sh"
+  echo ">>> 头显端需安装 XRoboToolkit APK（adb install -g ...），见 README。"
+}
+
+install_xrobotoolkit() {
+  local vr_dir="$ROOT_DIR/vr_pose_publisher"
+  local setup_script="$vr_dir/setup_xrobotoolkit.sh"
+  local pybind_dir
+
+  fa_env_load_config "$ROOT_DIR"
+  if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
+    FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
+  fi
+
+  if [[ ! -d "$vr_dir" ]]; then
+    echo "未找到目录: $vr_dir"
+    echo "请先执行子模块初始化与 ./init.sh install。"
+    exit 1
+  fi
+  if [[ ! -f "$setup_script" ]]; then
+    echo "未找到脚本: $setup_script"
+    exit 1
+  fi
+
+  # PC Service is required at runtime; install deb first when missing.
+  install_xrobotoolkit_pc_service
+
+  pybind_dir="$(fa_env_xrt_pybind_path)"
+  echo ">>> 使用 backend=$FA_ENV_BACKEND 安装 XRoboToolkit Python SDK"
+  echo ">>> 安装脚本: $setup_script"
+  echo ">>> pybind 目录（相对 vr_pose_publisher）: $pybind_dir"
+
+  (
+    set +u
+    fa_env_activate "$ROOT_DIR"
+    export XRT_PYBIND_DIR="$pybind_dir"
+    bash "$setup_script"
+  )
+}
+
 configure_ros2_workspace_source() {
   local ws_input ws_stored apply_all=0
   local arg
@@ -613,25 +767,27 @@ interactive_menu() {
   echo "  [环境与安装]"
   echo "    3) 按当前 backend 创建环境"
   echo "    4) 安装 interface / viser / vr"
+  echo "    5) 安装 XRoboToolkit PC Service（官方 deb）"
+  echo "    6) 安装 XRoboToolkit SDK（VR XRT 后端，含 PC Service 检测）"
   echo
   echo "  [一键执行]"
-  echo "    5) 全部执行（子模块 + 环境 + 安装）"
+  echo "    7) 全部执行（子模块 + 环境 + 安装）"
   echo
   echo "  [配置]"
   if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
-    echo "    6) 安装 Miniconda"
-    echo "    7) 配置 NJU PyPI 镜像（pip）"
+    echo "    8) 安装 Miniconda"
+    echo "    9) 配置 NJU PyPI 镜像（pip）"
   else
-    echo "    6) 安装 uv"
-    echo "    7) 配置 uv PyPI 镜像（清华）"
+    echo "    8) 安装 uv"
+    echo "    9) 配置 uv PyPI 镜像（清华）"
   fi
-  echo "    8) 配置 ROS2 工作空间"
-  echo "    9) 切换 backend (conda/uv)"
+  echo "   10) 配置 ROS2 工作空间"
+  echo "   11) 切换 backend (conda/uv)"
   echo
   echo "  [其他]"
   echo "    q) 退出"
   echo
-  read -r -p "输入选项 [1-9/q]: " choice
+  read -r -p "输入选项 [1-11/q]: " choice
 
   case "$choice" in
     1)
@@ -649,6 +805,12 @@ interactive_menu() {
       install_projects
       ;;
     5)
+      install_xrobotoolkit_pc_service
+      ;;
+    6)
+      install_xrobotoolkit
+      ;;
+    7)
       read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
       if submodules_have_content; then
         run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
@@ -657,24 +819,24 @@ interactive_menu() {
         run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
       fi
       ;;
-    6)
+    8)
       if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
         install_miniconda
       else
         install_uv
       fi
       ;;
-    7)
+    9)
       if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
         configure_nju_pypi_mirror
       else
         configure_uv_mirror
       fi
       ;;
-    8)
+    10)
       configure_ros2_workspace_source
       ;;
-    9)
+    11)
       read -r -p "输入 backend [conda/uv]（当前 $FA_ENV_BACKEND）: " backend_choice
       backend_choice="${backend_choice:-$FA_ENV_BACKEND}"
       fa_env_set_backend "$backend_choice"
@@ -707,6 +869,13 @@ main() {
     install)
       parse_install_backend_args "$@"
       install_projects
+      ;;
+    install-xrobotoolkit)
+      parse_install_backend_args "$@"
+      install_xrobotoolkit
+      ;;
+    install-xrobotoolkit-pc-service)
+      install_xrobotoolkit_pc_service "$@"
       ;;
     install-uv)
       install_uv
