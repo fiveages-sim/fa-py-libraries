@@ -4,6 +4,7 @@
 # Python / 环境
 .venv/
 .fa-env.local.toml
+.envrc
 
 # 发布产物
 dist/
