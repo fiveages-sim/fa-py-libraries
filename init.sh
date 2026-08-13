@@ -520,12 +520,14 @@ install_xrobotoolkit_pc_service() {
     echo ">>> 已存在 deb 文件，跳过下载。"
   fi
 
-  echo ">>> 执行: sudo dpkg -i $deb_path"
-  sudo dpkg -i "$deb_path" || {
-    echo ">>> dpkg 报错，尝试修复依赖: sudo apt-get install -f -y"
-    sudo apt-get install -f -y
-    sudo dpkg -i "$deb_path"
-  }
+  # 用 apt-get 装本地 deb，才能解析并安装依赖；dpkg -i 不会拉依赖。
+  # 路径必须是绝对路径或 ./ 开头，否则 apt 会当成仓库包名。
+  local apt_args=(-y)
+  if [[ "$force" -eq 1 ]]; then
+    apt_args+=(--reinstall)
+  fi
+  echo ">>> 执行: sudo apt-get install ${apt_args[*]} $deb_path"
+  sudo apt-get install "${apt_args[@]}" "$deb_path"
 
   echo ">>> PC Service 安装完成。"
   echo ">>> 启动（推荐）: 应用菜单打开 XRoboToolkit-PC-Service"
