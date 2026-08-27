@@ -1,0 +1,71 @@
+# Phase-1 XHand1 hybrid remap.
+# URDF U: open → lower, fist → upper.
+
+hand:
+  id: xhand1
+  dof: 12
+  joint_names:
+    - thumb_joint1
+    - thumb_joint2
+    - thumb_joint3
+    - index_joint1
+    - index_joint2
+    - index_joint3
+    - middle_joint1
+    - middle_joint2
+    - ring_joint1
+    - ring_joint2
+    - pinky_joint1
+    - pinky_joint2
+  limits:
+    - [0.0, 1.832]
+    - [-0.698, 1.57]
+    - [0.0, 1.57]
+    - [-0.174, 0.174]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+
+retargeting:
+  type: hybrid
+  flexion_scale: 1.0
+  finger_chain:
+    mcp_fist_ref_rad: 1.15
+    pip_fist_ref_rad: 1.05
+    scale: 1.0
+  thumb_tip:
+    rest_phi_rad: 0.28
+    opposition_scale: 1.30
+    opposition_offset: 0.02
+    invert_cmc: true
+    cmc_span: 1.832
+    mcp_fist_ref_rad: 1.10
+    ip_fist_ref_rad: 1.05
+    mcp_bias: -0.08
+    flex_scale: 1.0
+  index_abduction:
+    abduction_sign: -1.0
+    lateral_span_m: 0.028
+    abduction_curl_fade: 0.40
+
+ros:
+  controller: hand_joint_controller
+  topic_suffix: target_joint_position
+  fsm_topic: /fsm_command
+  auto_movej: true
+
+safety:
+  alpha: 1.0
+  max_delta_rad: 0.0
+  jump_reject_rad: 0.0
+  hold_on_inactive: true
+  hold_on_zero_pose: true
+  soft_collision: true
+
+publish:
+  rate_hz: 50.0

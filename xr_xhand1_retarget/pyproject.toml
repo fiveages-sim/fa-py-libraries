@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xr_xhand1_retarget"
+version = "0.1.0"
+description = "XRoboToolkit OpenXR hand (26 joints) → XHand1 12-DOF remapper for ROS2"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy<2.0.0",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+# xrobotoolkit_sdk is installed via vr_pose_publisher/setup_xrobotoolkit.sh
+ros = []
+
+[project.scripts]
+xr-xhand1-retarget = "xr_xhand1_retarget.node:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xr_xhand1_retarget*"]
