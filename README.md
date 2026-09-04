@@ -74,6 +74,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 | 可视化 | `viser` | 启动 ros2-viser |
 | VR 遥操 | `vr` | 启动 vr_pose_publisher（Vuer/WebXR） |
 | VR 遥操 | `vr-xrt` | 启动 vr_pose_publisher（XRoboToolkit SDK） |
+| VR 遥操 | `vr-xrt-service [start\|stop]` | 启动 / 关闭 XRoboToolkit PC Service（`runService.sh`） |
 | VR 录放 | `vr-record [--name 名称]` | 录制 `/xr/*` 到 ros2 bag |
 | VR 录放 | `vr-playback [选项]` | 回放 bag（`--file` `--rate` `--count`） |
 | VR 录放 | `vr-bag-clean [选项]` | 清理 bag（`--all` `--file`） |
@@ -87,12 +88,14 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
   [可视化]        1) ros2-viser launch
   [VR 遥操]       2) vr pose launch (Vuer/WebXR)
                   3) vr pose launch (XRoboToolkit)
-                  4) VR 遥操录包
-                  5) VR 遥操回放
-                  6) VR bag 清理
-  [机器人关节录放] 7) interface 录制
-                  8) interface 回放
-  [其他]          9) 查看各库版本号
+                  4) 启动 XRoboToolkit PC Service
+                  5) 关闭 XRoboToolkit PC Service
+                  6) VR 遥操录包
+                  7) VR 遥操回放
+                  8) VR bag 清理
+  [机器人关节录放] 9) interface 录制
+                  10) interface 回放
+  [其他]          11) 查看各库版本号
 ```
 
 ### XRoboToolkit 后端（可选）
@@ -106,8 +109,12 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 # 2) 安装 Python SDK（会先检测 PC Service；构建产物在 vr_pose_publisher/dependencies/）
 ./init.sh install-xrobotoolkit
 
-# 3) 启动 PC Service（推荐：应用菜单打开 “XRoboToolkit-PC-Service”），再启动发布节点
+# 3) 启动 PC Service，再启动发布节点
+./run.sh vr-xrt-service
 ./run.sh vr-xrt
+
+# 关闭 PC Service
+./run.sh vr-xrt-service stop
 ```
 
 | 对比 | `./run.sh vr` | `./run.sh vr-xrt` |
@@ -165,6 +172,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 # 终端 1：启动 VR 并遥操（Vuer 或 XRoboToolkit 二选一）
 ./run.sh vr
 # 或
+./run.sh vr-xrt-service   # XRoboToolkit：先启 PC Service
 ./run.sh vr-xrt
 
 # 终端 2：录包
@@ -214,6 +222,8 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 ./run.sh
 ./run.sh viser
 ./run.sh vr
+./run.sh vr-xrt-service
+./run.sh vr-xrt-service stop
 ./run.sh vr-xrt
 ./run.sh vr-record
 ./run.sh vr-playback

@@ -29,6 +29,8 @@ usage() {
   echo "VR 遥操:"
   echo "  vr                       启动 vr_pose_publisher（Vuer/WebXR）"
   echo "  vr-xrt                   启动 vr_pose_publisher（XRoboToolkit SDK）"
+  echo "  vr-xrt-service [start]   启动 XRoboToolkit PC Service（runService.sh）"
+  echo "  vr-xrt-service stop      关闭 XRoboToolkit PC Service"
   echo "  vr-record [--name 名称]  录制 /xr/* 话题到 ros2 bag"
   echo "  vr-playback [选项]       回放 bag（可选 --file --rate --count）"
   echo "  vr-bag-clean [选项]      清理已录制的 bag"
@@ -82,6 +84,95 @@ run_vr_launch() {
   python "$script_path"
 }
 
+XRT_PC_SERVICE_SCRIPT="/opt/apps/roboticsservice/runService.sh"
+XRT_PC_SERVICE_PROCESS="RoboticsServiceProcess"
+# Linux comm 最长 15 字符，RoboticsServiceProcess 会被截成 RoboticsService。
+XRT_PC_SERVICE_COMM="RoboticsService"
+
+xrt_pc_service_pids() {
+  pgrep -x "$XRT_PC_SERVICE_COMM" 2>/dev/null || true
+}
+
+xrt_pc_service_running() {
+  pgrep -x "$XRT_PC_SERVICE_COMM" >/dev/null 2>&1
+}
+
+run_xrt_pc_service() {
+  local pids
+  if [[ ! -x "$XRT_PC_SERVICE_SCRIPT" ]]; then
+    echo "未找到 XRoboToolkit PC Service: $XRT_PC_SERVICE_SCRIPT"
+    echo "请先运行: ./init.sh install-xrobotoolkit-pc-service"
+    exit 1
+  fi
+  pids="$(xrt_pc_service_pids | tr '\n' ' ')"
+  if [[ -n "${pids// }" ]]; then
+    echo ">>> XRoboToolkit PC Service 已在运行（pid: $pids）"
+    echo ">>> 接下来可运行: ./run.sh vr-xrt"
+    return 0
+  fi
+  echo ">>> 启动 XRoboToolkit PC Service"
+  echo ">>> $XRT_PC_SERVICE_SCRIPT"
+  # 官方脚本会后台拉起 RoboticsServiceProcess 后立即退出；nohup 避免父进程退出时带上 SIGHUP。
+  nohup bash "$XRT_PC_SERVICE_SCRIPT" >/dev/null 2>&1 &
+  local i
+  for i in 1 2 3 4 5 6; do
+    pids="$(xrt_pc_service_pids | tr '\n' ' ')"
+    if [[ -n "${pids// }" ]]; then
+      echo ">>> PC Service 已启动（pid: $pids）"
+      echo ">>> 接下来可运行: ./run.sh vr-xrt"
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo ">>> 未能确认 $XRT_PC_SERVICE_PROCESS 正在运行。"
+  echo ">>> 无桌面/SSH 时请确认 DISPLAY；也可直接执行: $XRT_PC_SERVICE_SCRIPT"
+  exit 1
+}
+
+stop_xrt_pc_service() {
+  local pids
+  pids="$(xrt_pc_service_pids | tr '\n' ' ')"
+  if [[ -z "${pids// }" ]]; then
+    echo ">>> XRoboToolkit PC Service 未在运行"
+    return 0
+  fi
+  echo ">>> 关闭 XRoboToolkit PC Service（pid: $pids）"
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if ! xrt_pc_service_running; then
+      echo ">>> 已关闭"
+      return 0
+    fi
+    sleep 0.3
+  done
+  echo ">>> SIGTERM 未退出，发送 SIGKILL"
+  pids="$(xrt_pc_service_pids | tr '\n' ' ')"
+  if [[ -n "${pids// }" ]]; then
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+  fi
+  sleep 0.3
+  if xrt_pc_service_running; then
+    echo ">>> 未能关闭，请手动检查: pgrep -a $XRT_PC_SERVICE_COMM"
+    exit 1
+  fi
+  echo ">>> 已强制关闭"
+}
+
+run_xrt_pc_service_cmd() {
+  case "${1:-start}" in
+    start) run_xrt_pc_service ;;
+    stop) stop_xrt_pc_service ;;
+    *)
+      echo "未知参数: $1"
+      echo "用法: ./run.sh vr-xrt-service [start|stop]"
+      exit 1
+      ;;
+  esac
+}
+
 run_vr_xrt_launch() {
   local script_path="$ROOT_DIR/vr_pose_publisher/launch_xrobotoolkit.py"
   if [[ ! -f "$script_path" ]]; then
@@ -95,8 +186,13 @@ run_vr_xrt_launch() {
     echo "  或: cd vr_pose_publisher && bash setup_xrobotoolkit.sh"
     exit 1
   fi
+  if ! xrt_pc_service_running; then
+    echo ">>> 未检测到 PC Service（$XRT_PC_SERVICE_PROCESS）。"
+    echo ">>> 可先运行: ./run.sh vr-xrt-service"
+    echo ">>> 或从应用菜单打开 XRoboToolkit-PC-Service"
+  fi
   echo ">>> 启动 vr pose launch (XRoboToolkit)"
-  echo ">>> 请确认: PC Service 已运行（应用菜单 XRoboToolkit-PC-Service），Pico App 已连接"
+  echo ">>> 请确认: PC Service 已运行，Pico App 已连接"
   python "$script_path"
 }
 
@@ -237,33 +333,37 @@ interactive_menu() {
   echo "  [VR 遥操]"
   echo "    2) vr pose launch (Vuer/WebXR)"
   echo "    3) vr pose launch (XRoboToolkit)"
-  echo "    4) VR 遥操录包"
-  echo "    5) VR 遥操回放"
-  echo "    6) VR bag 清理"
+  echo "    4) 启动 XRoboToolkit PC Service"
+  echo "    5) 关闭 XRoboToolkit PC Service"
+  echo "    6) VR 遥操录包"
+  echo "    7) VR 遥操回放"
+  echo "    8) VR bag 清理"
   echo
   echo "  [机器人关节录放]"
-  echo "    7) interface 录制"
-  echo "    8) interface 回放"
+  echo "    9) interface 录制"
+  echo "    10) interface 回放"
   echo
   echo "  [其他]"
-  echo "    9) 查看各库版本号"
+  echo "    11) 查看各库版本号"
   echo "    q) 退出"
   echo
-  read -r -p "输入选项 [1-9/q]: " choice
+  read -r -p "输入选项 [1-11/q]: " choice
 
   case "$choice" in
     1) run_viser_launch ;;
     2) run_vr_launch ;;
     3) run_vr_xrt_launch ;;
-    4) run_vr_bag_record ;;
-    5) run_vr_bag_playback ;;
-    6) run_vr_bag_clean ;;
-    7) run_interface_record ;;
-    8)
+    4) run_xrt_pc_service ;;
+    5) stop_xrt_pc_service ;;
+    6) run_vr_bag_record ;;
+    7) run_vr_bag_playback ;;
+    8) run_vr_bag_clean ;;
+    9) run_interface_record ;;
+    10)
       read -r -p "可选：输入回放 json 文件路径（留空则启动后自行选择）: " json_file
       run_interface_playback "${json_file:-}"
       ;;
-    9) show_library_versions ;;
+    11) show_library_versions ;;
     q|Q) echo "已退出。" ;;
     *) echo "无效选项。"; exit 1 ;;
   esac
@@ -276,6 +376,12 @@ main() {
       ;;
     vr)
       run_vr_launch
+      ;;
+    vr-xrt-service|xrt-service)
+      run_xrt_pc_service_cmd "${2:-start}"
+      ;;
+    vr-xrt-service-stop|xrt-service-stop)
+      stop_xrt_pc_service
       ;;
     vr-xrt|vr-xrobotoolkit)
       run_vr_xrt_launch
