@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VR 遥操 ROS2 录包/回放：录制并回放 /xr/* 话题（位姿、按键、摇杆、扳机）
+# VR 遥操 ROS2 录包/回放：录制并回放 /teleop/* 话题（位姿、按键、摇杆、扳机）
 
 set -euo pipefail
 
@@ -12,12 +12,12 @@ fa_env_load_config "$ROOT_DIR"
 fa_env_try_source_ros2
 
 XR_BAG_CORE_TOPICS=(
-  /xr/head_pose
-  /xr/left_ee_pose
-  /xr/right_ee_pose
-  /xr/controller_state
-  /xr/thumbstick_axes
-  /xr/trigger_values
+  /teleop/head_pose
+  /teleop/left_ee_pose
+  /teleop/right_ee_pose
+  /teleop/controller_state
+  /teleop/thumbstick_axes
+  /teleop/trigger_values
 )
 XR_BAG_DEBUG_TOPICS=(
   /left_target
@@ -150,7 +150,7 @@ usage() {
   echo "用法: $0 <record|playback|clean> [选项]"
   echo
   echo "子命令:"
-  echo "  record    录制 VR 遥操 /xr/* 话题到 ros2 bag"
+  echo "  record    录制 VR 遥操 /teleop/* 话题到 ros2 bag"
   echo "  playback  回放 bag，模拟 VR 输入"
   echo "  clean     清理已录制的 bag"
   echo
@@ -200,7 +200,7 @@ xr_bag_stop_playback() {
     return 0
   fi
 
-  # 尽快结束发布，避免 rosbag2 优雅退出期间仍向 /xr/* 发消息
+  # 尽快结束发布，避免 rosbag2 优雅退出期间仍向 /teleop/* 发消息
   kill -INT "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
   for i in $(seq 1 5); do
     kill -0 "$pid" 2>/dev/null || break
@@ -371,7 +371,7 @@ xr_bag_sanitize_name() {
 xr_bag_check_topics() {
   local topic_list
   local missing=()
-  local required=(/xr/left_ee_pose /xr/right_ee_pose)
+  local required=(/teleop/left_ee_pose /teleop/right_ee_pose)
 
   if ! command -v ros2 >/dev/null 2>&1; then
     echo "  ✗ 未找到 ros2 命令，请先 source ROS2 环境"
@@ -794,7 +794,7 @@ cmd_playback() {
   echo "保存目录: $XR_BAG_DIR"
   echo
   echo "注意:"
-  echo "  - 回放时会向 /xr/* 话题发布数据，请勿同时运行真实 VR（./run.sh vr）"
+  echo "  - 回放时会向 /teleop/* 话题发布数据，请勿同时运行真实 VR（./run.sh vr）"
   echo "  - 默认自动启动虚拟 xr_target_node，让 VRInputHandler 保持启用"
   echo "  - 安全建议：回放前将机器人置于 HOLD；回放结束后再切回 HOLD"
   echo "  - 请确保 arms_target_manager 与机器人控制栈已运行"

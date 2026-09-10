@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """虚拟 xr_target_node：仅注册节点名，供 bag 回放时让 VRInputHandler 保持启用。
 
-不发布任何 /xr/* 话题（由 ros2 bag play 负责）。
+不发布任何 /teleop/* 话题（由 ros2 bag play 负责）。
 """
 
 import rclpy

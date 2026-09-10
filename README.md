@@ -10,7 +10,7 @@
 
 - `init.sh`：初始化脚本（子模块、按 backend 创建环境、依赖安装）
 - `run.sh`：快速启动脚本（按配置激活环境后启动常用入口）
-- `scripts/vr-bag.sh`：VR 遥操 `/xr/*` 话题的 ros2 bag 录制 / 回放 / 清理（由 `run.sh` 调用）
+- `scripts/vr-bag.sh`：VR 遥操 `/teleop/*` 话题的 ros2 bag 录制 / 回放 / 清理（由 `run.sh` 调用）
 - `release.sh`：发布打包脚本（更新子模块后生成 zip，输出到 `dist/`）
 - `.fa-env.toml`：选择 `run.sh` / `install` 使用 **conda** 还是 **uv**
 - `scripts/fa-env.sh`：环境配置与激活（供上述脚本共用）
@@ -75,7 +75,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 | VR 遥操 | `vr` | 启动 vr_pose_publisher（Vuer/WebXR） |
 | VR 遥操 | `vr-xrt` | 启动 vr_pose_publisher（XRoboToolkit SDK） |
 | VR 遥操 | `vr-xrt-service [start\|stop]` | 启动 / 关闭 XRoboToolkit PC Service（`runService.sh`） |
-| VR 录放 | `vr-record [--name 名称]` | 录制 `/xr/*` 到 ros2 bag |
+| VR 录放 | `vr-record [--name 名称]` | 录制 `/teleop/*` 到 ros2 bag |
 | VR 录放 | `vr-playback [选项]` | 回放 bag（`--file` `--rate` `--count`） |
 | VR 录放 | `vr-bag-clean [选项]` | 清理 bag（`--all` `--file`） |
 | 关节录放 | `record` | interface 关节快照录制（JSON） |
@@ -100,7 +100,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 ### XRoboToolkit 后端（可选）
 
-与默认的 Vuer/WebXR 并列，可用 Pico **XRoboToolkit App + PC Service** 作为输入，发布同一套 `/xr/*` 话题（无 IK）。官方组件说明见 [XR-Robotics](https://github.com/XR-Robotics)。
+与默认的 Vuer/WebXR 并列，可用 Pico **XRoboToolkit App + PC Service** 作为输入，发布同一套 `/teleop/*` 话题（无 IK）。官方组件说明见 [XR-Robotics](https://github.com/XR-Robotics)。
 
 ```bash
 # 1) 安装官方 PC Service deb（按 Ubuntu 22.04/24.04 自动选择）
@@ -121,16 +121,16 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 |------|---------------|-------------------|
 | 输入 | 头显浏览器 WebXR（Vuer） | XRoboToolkit SDK |
 | 头显 App | 浏览器 | XRoboToolkit Unity App |
-| 发布话题 | `/xr/*` | `/xr/*`（相同契约） |
+| 发布话题 | `/teleop/*` | `/teleop/*`（相同契约） |
 
 ### VR 遥操录包 / 回放
 
-将 VR 发布的 `/xr/*` 话题（头显/手柄位姿、按键、摇杆、扳机）录制为 ros2 bag，之后可离线回放以模拟 VR 输入（供 `VRInputHandler` 消费）。底层脚本为 `scripts/vr-bag.sh`，推荐通过 `run.sh` 调用。
+将 VR 发布的 `/teleop/*` 话题（头显/手柄位姿、按键、摇杆、扳机）录制为 ros2 bag，之后可离线回放以模拟 VR 输入（供 `VRInputHandler` 消费）。底层脚本为 `scripts/vr-bag.sh`，推荐通过 `run.sh` 调用。
 
 **前置条件**
 
 - **录制**：另一终端已运行 `./run.sh vr` **或** `./run.sh vr-xrt`，且 VR 设备已连接
-- **回放**：**不要**同时运行 `./run.sh vr` / `./run.sh vr-xrt`（避免 `/xr/*` 话题冲突）；确保 `arms_target_manager` / `VRInputHandler` 与机器人控制栈已运行；回放前建议将机器人置于 HOLD，结束后再切回 HOLD
+- **回放**：**不要**同时运行 `./run.sh vr` / `./run.sh vr-xrt`（避免 `/teleop/*` 话题冲突）；确保 `arms_target_manager` / `VRInputHandler` 与机器人控制栈已运行；回放前建议将机器人置于 HOLD，结束后再切回 HOLD
 
 **录制**
 
@@ -144,7 +144,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 操作流程：输入会话名（可选）→ 按 Enter 开始录制 → 进行 VR 遥操 → 再按 Enter 停止。bag 默认保存到 `xr_bags/`（可用环境变量 `XR_BAG_DIR` 覆盖）。
 
-录制话题：`/xr/head_pose`、`/xr/left_ee_pose`、`/xr/right_ee_pose`、`/xr/controller_state`、`/xr/thumbstick_axes`、`/xr/trigger_values`
+录制话题：`/teleop/head_pose`、`/teleop/left_ee_pose`、`/teleop/right_ee_pose`、`/teleop/controller_state`、`/teleop/thumbstick_axes`、`/teleop/trigger_values`
 
 **回放**
 
