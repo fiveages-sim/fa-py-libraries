@@ -11,7 +11,7 @@ FA_ENV_ROOT_DIR="$ROOT_DIR"
 fa_env_load_config "$ROOT_DIR"
 fa_env_try_source_ros2
 
-XR_BAG_TOPICS=(
+XR_BAG_CORE_TOPICS=(
   /xr/head_pose
   /xr/left_ee_pose
   /xr/right_ee_pose
@@ -19,6 +19,14 @@ XR_BAG_TOPICS=(
   /xr/thumbstick_axes
   /xr/trigger_values
 )
+XR_BAG_DEBUG_TOPICS=(
+  /left_target
+  /right_target
+  /left_current_pose
+  /right_current_pose
+  /fsm_state
+)
+XR_BAG_TOPICS=("${XR_BAG_CORE_TOPICS[@]}" "${XR_BAG_DEBUG_TOPICS[@]}")
 XR_BAG_DIR="${XR_BAG_DIR:-$ROOT_DIR/xr_bags}"
 RECORD_NODE_NAME="${RECORD_NODE_NAME:-rosbag2_recorder}"
 
@@ -78,8 +86,10 @@ xr_bag_info_duration() {
 xr_bag_prompt_playback_options() {
   local count_set="$1"
   local rate_set="$2"
-  local -n _count=$3
-  local -n _rate=$4
+  local scope_set="$3"
+  local -n _count=$4
+  local -n _rate=$5
+  local -n _all_topics=$6
   local reply
 
   if ! xr_bag_has_tty; then
@@ -96,6 +106,12 @@ xr_bag_prompt_playback_options() {
     reply="$(xr_bag_read_line "回放速率（默认 ${_rate}）: ")"
     if [[ -n "$reply" ]]; then
       _rate="$reply"
+    fi
+  fi
+  if [[ "$scope_set" != true ]]; then
+    reply="$(xr_bag_read_line "回放范围 [c]仅核心 VR 话题(默认)/[a]全部录制话题: ")"
+    if [[ "$reply" =~ ^[Aa]$ ]]; then
+      _all_topics=true
     fi
   fi
 }
@@ -146,6 +162,7 @@ usage() {
   echo "  --rate RATE   回放速率（默认 1.0）"
   echo "  --count N     回放次数（默认 1）"
   echo "  --no-stub     不启动虚拟 xr_target_node（默认会自动启动）"
+  echo "  --all-topics  回放全部录制话题（默认只回放核心 VR 话题：${XR_BAG_CORE_TOPICS[*]}）"
   echo
   echo "clean 选项:"
   echo "  --all         删除全部 bag（需确认）"
@@ -233,7 +250,7 @@ xr_bag_start_record() {
   local bag_path="$1"
   local log_file="$2"
 
-  setsid ros2 bag record -o "$bag_path" --topics "${XR_BAG_TOPICS[@]}" \
+  setsid ros2 bag record -s mcap -o "$bag_path" --topics "${XR_BAG_TOPICS[@]}" \
     --disable-keyboard-controls \
     </dev/null >>"$log_file" 2>&1 &
   RECORD_PID=$!
@@ -721,9 +738,11 @@ cmd_playback() {
   local rate="1.0"
   local count=1
   local use_stub=true
+  local all_topics=false
   local count_set=false
   local rate_set=false
-  local i duration
+  local all_topics_set=false
+  local i duration scope_desc
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -743,6 +762,11 @@ cmd_playback() {
         ;;
       --no-stub)
         use_stub=false
+        shift
+        ;;
+      --all-topics)
+        all_topics=true
+        all_topics_set=true
         shift
         ;;
       -h|--help|help)
@@ -789,11 +813,19 @@ cmd_playback() {
     exit 1
   fi
 
-  xr_bag_prompt_playback_options "$count_set" "$rate_set" count rate
+  xr_bag_prompt_playback_options "$count_set" "$rate_set" "$all_topics_set" count rate all_topics
 
   if [[ ! "$count" =~ ^[0-9]+$ ]] || ((count < 1)); then
     echo "  ✗ 回放次数须为正整数: $count"
     exit 1
+  fi
+
+  local -a play_topic_args=()
+  if $all_topics; then
+    scope_desc="全部录制话题"
+  else
+    play_topic_args=(--topics "${XR_BAG_CORE_TOPICS[@]}")
+    scope_desc="核心 VR 话题（${XR_BAG_CORE_TOPICS[*]}）"
   fi
 
   duration="$(xr_bag_info_duration "$bag_path")"
@@ -801,6 +833,7 @@ cmd_playback() {
   echo ">>> 回放: $(basename "$bag_path")"
   echo "    路径: $bag_path"
   echo "    速率: $rate | 次数: $count"
+  echo "    范围: $scope_desc"
   if [[ -n "$duration" ]]; then
     echo "    单次时长: 约 ${duration}"
   fi
@@ -826,7 +859,7 @@ cmd_playback() {
     else
       echo "    正在回放...（Ctrl+C 终止全部回放）"
     fi
-    setsid ros2 bag play "$bag_path" --rate "$rate" --disable-keyboard-controls &
+    setsid ros2 bag play "$bag_path" --rate "$rate" --disable-keyboard-controls "${play_topic_args[@]}" &
     XR_BAG_PLAY_PID=$!
     play_rc=0
     wait "$XR_BAG_PLAY_PID" || play_rc=$?
