@@ -31,7 +31,7 @@ usage() {
   echo "  vr-xrt                   启动 vr_pose_publisher（XRoboToolkit SDK）"
   echo "  vr-xrt-service [start]   启动 XRoboToolkit PC Service（runService.sh）"
   echo "  vr-xrt-service stop      关闭 XRoboToolkit PC Service"
-  echo "  vr-record [--name 名称]  录制 /xr/* 话题到 ros2 bag"
+  echo "  vr-record [--name 名称]  录制 /teleop/* 话题到 ros2 bag"
   echo "  vr-playback [选项]       回放 bag（可选 --file --rate --count）"
   echo "  vr-bag-clean [选项]      清理已录制的 bag"
   echo
@@ -197,7 +197,7 @@ run_vr_xrt_launch() {
 }
 
 # =============================================================================
-# VR 遥操录包 — ros2 bag (/xr/*)
+# VR 遥操录包 — ros2 bag (/teleop/*)
 # =============================================================================
 
 run_vr_bag_record() {
