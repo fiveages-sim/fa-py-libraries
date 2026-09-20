@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xr_hand_retarget"
+version = "0.1.0"
+description = "XRoboToolkit OpenXR hand → multi-hand retarget dispatcher (XHand1, Wuji Hand 2, LinkerHand O6/L6/O7, …)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy<2.0.0",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+# Official Wuji solver (pin + nlopt). Install the cloned repo instead:
+#   ./init.sh install-wuji-retargeting
+wuji = []
+vector = ["scipy>=1.10"]
+
+[project.scripts]
+xr-hand-retarget = "xr_hand_retarget.node:main"
+xr-hand-calibrate = "xr_hand_retarget.calibrate:main"
+# Legacy CLI names (same entry points as above)
+xr-xhand1-retarget = "xr_hand_retarget.node:main"
+xr-xhand1-calibrate = "xr_hand_retarget.calibrate:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xr_hand_retarget*"]
+
+[tool.setuptools.package-data]
+xr_hand_retarget = []
+
+[tool.setuptools.data-files]
+"xr_hand_retarget/assets" = [
+    "assets/wuji_hand2_left.urdf",
+    "assets/wuji_hand2_right.urdf",
+    "assets/o6_left.urdf",
+    "assets/o6_right.urdf",
+    "assets/l6_left.urdf",
+    "assets/l6_right.urdf",
+    "assets/o7_left.urdf",
+    "assets/o7_right.urdf",
+    "assets/xhand_left.urdf",
+    "assets/xhand_right.urdf",
+]

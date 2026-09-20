@@ -1,0 +1,99 @@
+# Wuji Hand 2 curl calibration (OpenXR 26 xyz).
+# schema: wuji_hand2_curl_calib.v1
+# open→q=0; fist four-finger flex→URDF upper; thumb_to_pinky→cmc_flex;
+# pinch: robot thumb_cmc_flex from URDF palm-X slot (hand_base +X).
+# Recapture: python -m xr_hand_retarget.calibrate --config configs/wuji_hand2.yaml
+schema: wuji_hand2_curl_calib.v1
+source: xrobotoolkit
+headset: pico
+sides:
+  left:
+    open:
+      index_mcp: 0.2727006556707572
+      index_pip: 0.024128283424753594
+      index_dip: 0.027753797186867324
+      middle_mcp: 0.2766988729496025
+      middle_pip: 0.08909517482917328
+      middle_dip: 0.023007889835663153
+      ring_mcp: 0.15070908942839356
+      ring_pip: 0.0876790964646772
+      ring_dip: 0.04073265845820018
+      pinky_mcp: 0.07459303496106662
+      pinky_pip: 0.14797220327843918
+      pinky_dip: 0.049042626954502566
+      thumb_mcp: 0.11910275470358611
+      thumb_ip: 0.06572053804468547
+      thumb_lat: -0.08198492232522839
+    fist:
+      index_mcp: 1.3225497186671238
+      index_pip: 1.687867795646841
+      index_dip: 0.9102281573508835
+      middle_mcp: 1.4098957019387832
+      middle_pip: 1.5458018079853144
+      middle_dip: 0.9690424865244234
+      ring_mcp: 1.4671752420404318
+      ring_pip: 1.600267687373535
+      ring_dip: 0.7652226709850187
+      pinky_mcp: 1.3485667174068487
+      pinky_pip: 1.6178658623066386
+      pinky_dip: 0.8260687819778552
+    thumb_to_pinky:
+      thumb_lat: 0.017912256101084465
+    thumb_flex:
+      mcp: 1.1
+      ip: 1.05
+    pinch:
+      skipped: false
+      index:
+        thumb_lat: -0.012626965755752173
+      middle:
+        thumb_lat: 0.0012681921927185464
+      ring:
+        thumb_lat: 0.015091781266126987
+      pinky:
+        thumb_lat: 0.02243186530919289
+  right:
+    open:
+      index_mcp: 0.37980684750817195
+      index_pip: 0.3063128568372384
+      index_dip: 0.13144089879511833
+      middle_mcp: 0.4878338064295018
+      middle_pip: 0.5497671077359318
+      middle_dip: 0.1970628072921634
+      ring_mcp: 0.5068977802839969
+      ring_pip: 0.5461835249941673
+      ring_dip: 0.10866035076022174
+      pinky_mcp: 0.5438887314280536
+      pinky_pip: 0.4871409196839549
+      pinky_dip: 0.14002584622749814
+      thumb_mcp: 0.09364720323227615
+      thumb_ip: 0.04936466704619624
+      thumb_lat: 0.05978839253615814
+    fist:
+      index_mcp: 0.37315002079135917
+      index_pip: 0.31852077273307744
+      index_dip: 0.12597236141111168
+      middle_mcp: 0.47193246154073254
+      middle_pip: 0.5334390919943535
+      middle_dip: 0.1705793825215296
+      ring_mcp: 0.4933876523701808
+      ring_pip: 0.5155203791012792
+      ring_dip: 0.0906277725202993
+      pinky_mcp: 0.5443534853641676
+      pinky_pip: 0.4282858974076569
+      pinky_dip: 0.10669701797262299
+    thumb_to_pinky:
+      thumb_lat: 0.05923844937110476
+    thumb_flex:
+      mcp: 1.1
+      ip: 1.05
+    pinch:
+      skipped: false
+      index:
+        thumb_lat: 0.05856688952858918
+      middle:
+        thumb_lat: 0.05753420997524592
+      ring:
+        thumb_lat: 0.0592950129026444
+      pinky:
+        thumb_lat: 0.05948929174414572

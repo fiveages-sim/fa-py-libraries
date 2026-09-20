@@ -1,0 +1,146 @@
+# XHand1 — T_robot / T_xhand detail (layer 3). Indexed by configs/xhand1.yaml.
+#
+# Separation:
+#   robot:     once per device (limits/pinch from URDF; finger_scale if pinky long…)
+#   calib:     T_person curl endpoints → calib/xrt_default.yaml (user file)
+#   method:    local.yaml hands.method covers retargeting.type
+#
+# Dump URDF limits + pinch slots:
+#   python -m xr_hand_retarget.txhand --side right
+# Recapture person curl (after T_person):
+#   python -m xr_hand_retarget.calibrate --config xr_hand_retarget/configs/xhand1.yaml
+
+backend: xhand1
+
+# --- T_xhand (device) — do not put operator poses here ---
+robot:
+  use_urdf_limits: true          # overwrite hand.limits from assets/xhand_*.urdf
+  # urdf_path: null              # default package assets
+  pinch_target_link: pip         # mcp | pip | tip — URDF lateral slot for thumb j1
+  # finger_chain_scale: 1.0
+  # finger_scale:                # optional per-finger curl scale (T_robot only)
+  #   pinky: 0.92                # e.g. short-reach pinky on this unit
+
+hand:
+  id: xhand1
+  dof: 12
+  joint_names:
+    - thumb_joint1
+    - thumb_joint2
+    - thumb_joint3
+    - index_joint1
+    - index_joint2
+    - index_joint3
+    - middle_joint1
+    - middle_joint2
+    - ring_joint1
+    - ring_joint2
+    - pinky_joint1
+    - pinky_joint2
+  # Fallback if use_urdf_limits: false or URDF missing. Prefer URDF.
+  limits:
+    - [0.0, 1.832]
+    - [-0.698, 1.57]
+    - [0.0, 1.57]
+    - [-0.174, 0.174]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+
+retargeting:
+  # curl | thumb_ik | vector(=somehand) | dexpilot
+  type: dexpilot
+  flexion_scale: 1.0
+
+  curl:
+    calib: calib/xrt_default.yaml   # T_person
+    output_alpha: 0.85
+    # pinch_target_link inherited from robot: when set
+
+  thumb_ik:
+    scale_lateral: 1.5
+    scale_normal: 0.5
+    w_pos: 8.0
+    w_dir: 8.0
+    w_full: 1.0
+    output_alpha: 0.72
+    temporal_filter_alpha: 0.50
+    pinch_d1_m: 0.022
+    pinch_d2_m: 0.040
+    thumb_max_delta_rad: 0.08
+    pinch_blend: 0.5
+
+  dexpilot:
+    scaling_factor: 1.8
+    project_dist: 0.03
+    escape_dist: 0.05
+    w_proj_s1: 200.0
+    w_proj_s2: 400.0
+    w_tip_pair_base: 1.0
+    w_wrist_tip: 15.0
+    max_iterations: 25
+    norm_delta: 0.004
+    output_alpha: 0.55
+    mix:
+      w_dexpilot: 1.0
+      w_bone: 0
+      w_fist: 0.0
+    fist_pose:
+      enabled: false
+      limit_frac: 0.98
+    fist_gate:
+      pinch_suppress: 0.0
+    thumb_seg:
+      enabled: false
+
+  # Geometric priors (T_robot knobs if you retune a unit — not per operator)
+  finger_chain:
+    mcp_fist_ref_rad: 1.15
+    pip_fist_ref_rad: 1.05
+    scale: 1.0
+  thumb_tip:
+    j1_mode: lateral_anchor
+    mcp_fist_ref_rad: 1.10
+    ip_fist_ref_rad: 1.05
+    flex_scale: 1.0
+  index_abduction:
+    abduction_sign: -1.0
+    lateral_span_m: 0.028
+    abduction_curl_fade: 0.40
+    lat_rest_m: 0.0
+
+ros:
+  controller: hand_joint_controller
+  topic_suffix: target_joint_position
+  fsm_topic: /fsm_command
+  auto_movej: true
+
+safety:
+  alpha: 0.90
+  max_delta_rad: 0.0
+  hold_on_inactive: true
+  hold_on_zero_pose: true
+  soft_collision: false
+  collision:
+    thumb_index_guard: true
+    ease: 0.88
+  motion:
+    enabled: false
+    use_urdf_limits: true
+    position_margin_rad: 0.02
+    use_urdf_velocity: true
+    velocity_scale: 0.5
+    accel_limit_rad_s2: 40.0
+    strict_collision: true
+    min_clearance_m: 0.014
+    thumb_palm_clearance_m: 0.008
+    thumb_priority: true
+    on_violation: scale
+
+publish:
+  rate_hz: 50.0

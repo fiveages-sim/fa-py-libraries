@@ -1,0 +1,10 @@
+# Test overlay: force pinch attract on.
+#   linker:
+#     test: tests/attract_on.yaml
+
+retargeting:
+  curl:
+    attract:
+      enabled: true
+      near: 0.22
+      far: 0.45

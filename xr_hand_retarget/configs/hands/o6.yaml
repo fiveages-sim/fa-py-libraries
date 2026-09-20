@@ -1,0 +1,82 @@
+# O6 robot workspace + semantics (RViz / 实机测的 q).
+# Human curl: linker.user on the index yaml (calib/o6.yaml).
+#
+# 两条技术路线共用下面 pinch_q（不要为 nest 再采一套）：
+#   curl — 特征插值 + attract（日常）
+#   nest — 食指/中指捏合点当作「四指能到的中心」锚点，见 docs/O6_NEST.md
+#         C_index:  j2=1.0  j1=0.41  index=0.8
+#         C_middle: j2=1.3  j1=0.41  middle=0.83
+#         无名/小指跟中指槽；拳心走 fist_envelope，不要用捏合 j1 穿掌。
+
+retargeting:
+  curl:
+    # Thumb lower-pass than fingers (optical jitter); velocity layer is separate.
+    output_alpha: 0.85
+    thumb_alpha: 0.70
+    finger_alpha: 0.88
+    neighbor_soft: 0.12
+    workspace:
+      thumb_joint2:
+        index: 1.0
+        middle: 1.3
+        along: 0.22           # j2≤此：侧掌，j1 走满 curl（五指同向）
+        along_fade: 0.12      # 离开 along 后淡出
+        pinch_halfwidth: 0.25 # 与 safety pinch_j2 走廊一致；槽内才允许接触 j1
+      # j2 捏合槽：人手 x = 拇指在食指PIP→中指PIP 上的位置（slot_t，0/1）
+      # 机器人 y = pinch_q 的 1.0 / 1.3。不必立刻重采；重采会写入 slot_t 结点。
+      closed_reach_t: 0.85   # pack 后加在 pack 上；无 pack 字段时仍提前 curl 满行程
+      pinch_knot_max_t: 0.92 # pinch 中点；勿用 0.62（会把接触削成半握）
+      # nest：j2=掌面径向 / 掌宽（不要用 7° 掌骨 az）；j1=尖到巢距离。不必重采。
+      nest:
+        r_near: 0.32      # 近巢 → j1 = pinch_q.thumb_joint1
+        r_far: 1.15       # 远（掌侧）→ j1 = 0
+        curl_span: 0.08   # 拇指 curl 只加这一档，不拉满 URDF
+        lat_along: 0.42   # +桡侧 / 掌宽 → j2 = 0
+        lat_opp: -0.02    # 压过巢 → j2 = thumb_joint2.middle
+      pinch_q:
+        index:
+          thumb_joint1: 0.41
+          index_joint: 0.8
+        middle:
+          thumb_joint1: 0.41
+          middle_joint: 0.83
+        ring:
+          ring_joint: 0.8
+        pinky:
+          pinky_joint: 0.8
+    attract:
+      enabled: true
+    fist_envelope:
+      # 食指+中指到拳位时限制 j1：低 j2 封顶 j1_roof，避免拇指穿掌。
+      enabled: true
+      fingers: [index, middle]
+      finger_t: 0.92
+      j2_split: 0.6
+      j1_roof: 0.44
+
+safety:
+  # j1, j2, index, middle, ring, pinky — j2 faster for 侧掌→对掌; fingers stay gentle.
+  velocity:
+    enabled: true
+    use_urdf: false
+    per_joint: [1.5, 3.5, 1.2, 1.2, 1.2, 1.2]
+  position:
+    fk:
+      pack_j2_min: 0.75
+      pack_finger_min: 0.55
+      along_j2: 0.35
+      fist_finger_min: 0.90
+      hold_fingers_until_thumb_out: true
+      pinch_clearance_m: 0.006
+      sphere_radius_m: 0.006
+      pack_clearance_m: 0.020
+      pinch_j2:
+        index: 1.0
+        middle: 1.3
+        halfwidth: 0.25
+      # Offline safe set; enable after: python tools/build_o6_cspace.py --side both
+      # weights = move preference (higher → change that joint first when projecting).
+      cspace:
+        enabled: true
+        table: assets/cspace/o6_{side}.npz
+        weights: [4.0, 10.0, 0.2, 0.2, 0.2, 0.2]

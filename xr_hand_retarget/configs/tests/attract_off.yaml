@@ -1,0 +1,9 @@
+# Test overlay: turn pinch attract off to inspect curl interpolation.
+# In the hand index yaml:
+#   linker:
+#     test: tests/attract_off.yaml
+
+retargeting:
+  curl:
+    attract:
+      enabled: false

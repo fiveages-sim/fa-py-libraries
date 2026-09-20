@@ -1,0 +1,32 @@
+# LinkerHand L6 — family index (layer 2). Same processor as O6.
+# Recapture human (unified session): python -m xr_hand_retarget.calibrate --config <this file>
+# Run: FA_HAND=l6 ./run.sh vr-xrt wrist
+# mp_curl: FA_HAND=l6 FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist
+
+backend: linker
+layout: l6
+
+hand:
+  id: linkerhand_l6
+  dof: 6
+  joint_names:
+    - thumb_joint1
+    - thumb_joint2
+    - index_joint
+    - middle_joint
+    - ring_joint
+    - pinky_joint
+
+linker:
+  defaults: linker_defaults.yaml
+  workspace: hands/l6.yaml
+  user: calib/l6.yaml          # 与 O6 同一次会话的拷贝；不要和 users/pico.yaml 混用
+  # test: tests/attract_off.yaml
+
+retargeting:
+  type: curl
+  curl:
+    model: l6
+    source_side: left
+    mirror_az: negate
+    output_alpha: 0.85

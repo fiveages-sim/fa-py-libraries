@@ -1,0 +1,36 @@
+# Wuji Hand 2 — T_robot (device vs standard hand). Not an operator file.
+# Indexed by configs/wuji_hand2.yaml. Person overlays: users/*.yaml or calib/*.yaml.
+#
+# segment_scaling here = robot relative to standard hand (official Retargeter).
+# Operator-specific scale goes under users/<id>.yaml → person.segment_scaling.
+
+schema: fa_hand_robot.wuji.v1
+
+hand:
+  id: wuji_hand2
+  dof: 20
+
+# Official solver knobs (merged into wuji.overlay). mediapipe_rotation stays in
+# configs/official/* (left/right differ).
+retarget:
+  thumb_skip_pip: true
+  lp_alpha: 0.2
+  norm_delta: 0.04
+  w_pos: 1.0
+  w_dir: 2.0
+  w_full_hand: 1.0
+  w_hyper: 1.0
+  w_couple: 0.1
+  couple_ratio: 0.7
+  scaling: 1.0
+  segment_scaling:
+    thumb:  [1.05, 1.1, 1.05]
+    index:  [1.02, 1.02, 1.02]
+    middle: [1.0, 1.0, 1.0]
+    ring:   [1.02, 1.02, 1.02]
+    pinky:  [1.02, 1.02, 1.02]
+  pinch_thresholds:
+    index:  { d1: 2.0, d2: 4.0 }
+    middle: { d1: 2.0, d2: 4.0 }
+    ring:   { d1: 2.0, d2: 4.0 }
+    pinky:  { d1: 2.0, d2: 4.0 }

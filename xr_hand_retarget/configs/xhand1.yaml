@@ -1,0 +1,10 @@
+# XHand1 — family index (layer 2), same pattern as o6.yaml.
+# Detail: hands/xhand1.yaml + calib/xrt_default.yaml
+# Recapture: python -m xr_hand_retarget.calibrate --config <this file>
+# Run: FA_HAND=xhand1 ./run.sh vr-xrt wrist
+# method: local.yaml hands.method (dexpilot | vector | curl | thumb_ik)
+
+backend: xhand1
+
+xhand1:
+  config: hands/xhand1.yaml

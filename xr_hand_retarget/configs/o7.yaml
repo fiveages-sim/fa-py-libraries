@@ -1,0 +1,36 @@
+# LinkerHand O7 — family index (layer 2).
+# Pico 右手 A / 左手 X 可强制 j2 垫带锁。日常 method: curl；试验 veccurl。
+# Recapture human (unified session): python -m xr_hand_retarget.calibrate --config <this file>
+# Run: FA_HAND=o7 ./run.sh vr-xrt wrist
+# mp_curl: FA_HAND=o7 FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist
+#
+# ROS: ros2 topic pub /xr_hand_retarget/j2_lock std_msgs/Bool "{data: true}"
+
+backend: linker
+layout: o7
+
+hand:
+  id: linkerhand_o7
+  dof: 7
+  joint_names:
+    - thumb_joint1
+    - thumb_joint2
+    - thumb_joint3
+    - index_joint
+    - middle_joint
+    - ring_joint
+    - pinky_joint
+
+linker:
+  defaults: linker_defaults.yaml
+  workspace: hands/o7.yaml
+  user: calib/o7.yaml          # 与 O6/L6 同一次统一会话导出
+  # test: tests/attract_off.yaml
+
+retargeting:
+  type: curl
+  curl:
+    model: o7
+    source_side: left
+    mirror_az: negate
+    output_alpha: 0.85

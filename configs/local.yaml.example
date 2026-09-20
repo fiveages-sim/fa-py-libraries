@@ -1,0 +1,48 @@
+# Layer 1 — this machine (copy to local.yaml; gitignored).
+#
+# VR 手柄 / 光学腕在 vr_pose_publisher/configs/xrt_teleop.yaml
+# 本文件：source（输入）+ user（T_person）+ type/method（哪只手/算法）。
+# method 覆盖该手 yaml 的 retargeting.type。
+#
+# source: xrt（默认）| replay | …（多源见 docs/dev/PIPELINE.md P3）
+# user:   可选。Linker → 覆盖 linker.user；Wuji official → users/<id>.yaml 的 person.*
+#         curl 标定文件（calib/*.yaml、users/pico.yaml）也是 user 一类。
+# type:   xhand1 | wuji | o6 | l6 | o7
+#
+# ----- XHand1 method（包装默认 dexpilot）-----
+#   dexpilot / vector / curl / thumb_ik
+#   dexpilot+vector：改 hands/xhand1.yaml → dexpilot.mix（method 仍填 dexpilot）
+#
+# ----- 其它手 method -----
+#   wuji   → curl | official
+#   o6/l6 → curl | nest | mp_curl
+#   o7 → curl | veccurl | mp_curl
+#
+# mp_curl: VR26→MediaPipe21→curl；人手标定共用 configs/calib/mp_curl.yaml（o6/l6/o7）
+#   python -m xr_hand_retarget.calibrate --config configs/{o6,l6,o7}.yaml --method mp_curl
+#   FA_HAND=o6|l6|o7 FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist
+#
+# 标准手 / T_robot / T_person：
+#   configs/standard_hand.yaml
+#   configs/hands/{o6,l6,o7,xhand1,wuji}.yaml
+#   configs/users/* 与 configs/calib/*（user 文件）
+
+hands:
+  source: xrt       # 输入源；缺省 xrt
+  type: xhand1      # o6 | l6 | o7 | wuji | xhand1
+  method: dexpilot  # 见上
+  # user: pico      # 仅需要覆盖默认 user/calib 时再开
+
+# Per-side:
+# left:
+#   type: xhand1
+#   method: dexpilot
+# right:
+#   type: o7
+#   method: curl
+
+# ---------------------------------------------------------------------------
+# 验证：
+#   Linker / XHand1：改 type 后 ./run.sh vr-xrt wrist
+#   Wuji：python -m xr_hand_retarget --config xr_hand_retarget/configs/wuji_hand2.yaml --side right
+# ---------------------------------------------------------------------------

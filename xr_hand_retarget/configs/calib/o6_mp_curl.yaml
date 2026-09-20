@@ -1,0 +1,80 @@
+# Legacy per-hand mp_curl seed — prefer shared configs/calib/mp_curl.yaml
+# (o6/l6/o7 share one human MediaPipe21 curl file). Kept as fallback only.
+schema: linkerhand_mp_curl.v1
+source: xrobotoolkit
+headset: pico
+sides:
+  left:
+    open:
+      index_mcp: 0.0
+      index_pip: 0.0
+      index_dip: 0.0
+      middle_mcp: 0.0
+      middle_pip: 0.0
+      middle_dip: 0.0
+      ring_mcp: 0.0
+      ring_pip: 0.0
+      ring_dip: 0.0
+      pinky_mcp: 0.0
+      pinky_pip: 0.0
+      pinky_dip: 0.0
+      thumb_mcp: 0.0
+      thumb_ip: 0.0
+      thumb_lat: 0.045
+    fist:
+      index_mcp: 1.15
+      index_pip: 1.05
+      index_dip: 0.9
+      middle_mcp: 1.15
+      middle_pip: 1.05
+      middle_dip: 0.9
+      ring_mcp: 1.15
+      ring_pip: 1.05
+      ring_dip: 0.9
+      pinky_mcp: 1.15
+      pinky_pip: 1.05
+      pinky_dip: 0.9
+    thumb_to_pinky:
+      thumb_lat: -0.025
+    thumb_flex:
+      mcp: 1.1
+      ip: 1.05
+    pinch:
+      skipped: true
+  right:
+    open:
+      index_mcp: 0.0
+      index_pip: 0.0
+      index_dip: 0.0
+      middle_mcp: 0.0
+      middle_pip: 0.0
+      middle_dip: 0.0
+      ring_mcp: 0.0
+      ring_pip: 0.0
+      ring_dip: 0.0
+      pinky_mcp: 0.0
+      pinky_pip: 0.0
+      pinky_dip: 0.0
+      thumb_mcp: 0.0
+      thumb_ip: 0.0
+      thumb_lat: 0.045
+    fist:
+      index_mcp: 1.15
+      index_pip: 1.05
+      index_dip: 0.9
+      middle_mcp: 1.15
+      middle_pip: 1.05
+      middle_dip: 0.9
+      ring_mcp: 1.15
+      ring_pip: 1.05
+      ring_dip: 0.9
+      pinky_mcp: 1.15
+      pinky_pip: 1.05
+      pinky_dip: 0.9
+    thumb_to_pinky:
+      thumb_lat: -0.025
+    thumb_flex:
+      mcp: 1.1
+      ip: 1.05
+    pinch:
+      skipped: true
