@@ -446,7 +446,7 @@ xrobotoolkit_pc_service_installed() {
 install_xrobotoolkit_pc_service() {
   local vr_dir="$ROOT_DIR/vr_pose_publisher"
   local deb_dir="$vr_dir/dependencies/debs"
-  local os_ver deb_name deb_url deb_path force=0
+  local os_ver deb_name deb_url deb_path arch force=0
   local arg
 
   for arg in "$@"; do
@@ -473,27 +473,45 @@ install_xrobotoolkit_pc_service() {
     return 0
   fi
 
-  os_ver="$(detect_ubuntu_version_id)"
-  case "$os_ver" in
-    22.04)
-      deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb"
+  arch="$(dpkg --print-architecture)"
+  case "$arch" in
+    arm64)
+      # 官方 arm64 deb 不区分 Ubuntu 版本，v1.0.0 下同时提供桌面版与 headless 版。
+      # 默认桌面版；无显示环境的控制器可用 XRT_PCS_HEADLESS=1 切换。
+      if [[ "${XRT_PCS_HEADLESS:-0}" == "1" ]]; then
+        deb_name="XRoboToolkit-PC-Service-headless_1.0.0.0_arm64.deb"
+      else
+        deb_name="XRoboToolkit-PC-Service_1.0.0.0_arm64.deb"
+      fi
       ;;
-    24.04)
-      deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_24.04_amd64.deb"
-      ;;
-    *)
-      echo ">>> 当前系统版本: ${os_ver:-unknown}"
-      echo ">>> 官方 amd64 deb 仅提供 Ubuntu 22.04 / 24.04（见 XR-Robotics releases）。"
-      read -r -p "输入要下载的版本 [22.04/24.04]（默认 24.04）: " os_ver
-      os_ver="${os_ver:-24.04}"
+    amd64)
+      os_ver="$(detect_ubuntu_version_id)"
       case "$os_ver" in
-        22.04) deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb" ;;
-        24.04) deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_24.04_amd64.deb" ;;
+        22.04)
+          deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb"
+          ;;
+        24.04)
+          deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_24.04_amd64.deb"
+          ;;
         *)
-          echo "不支持的版本: $os_ver"
-          exit 1
+          echo ">>> 当前系统版本: ${os_ver:-unknown}"
+          echo ">>> 官方 amd64 deb 仅提供 Ubuntu 22.04 / 24.04（见 XR-Robotics releases）。"
+          read -r -p "输入要下载的版本 [22.04/24.04]（默认 24.04）: " os_ver
+          os_ver="${os_ver:-24.04}"
+          case "$os_ver" in
+            22.04) deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb" ;;
+            24.04) deb_name="XRoboToolkit_PC_Service_1.0.0_ubuntu_24.04_amd64.deb" ;;
+            *)
+              echo "不支持的版本: $os_ver"
+              exit 1
+              ;;
+          esac
           ;;
       esac
+      ;;
+    *)
+      echo "不支持的架构: $arch（官方仅提供 amd64 / arm64）"
+      exit 1
       ;;
   esac
 
@@ -631,8 +649,18 @@ install_miniconda() {
       exit 1
     fi
 
+    local mc_arch
+    case "$(uname -m)" in
+      x86_64)  mc_arch="x86_64" ;;
+      aarch64) mc_arch="aarch64" ;;
+      *)
+        echo "不支持的架构: $(uname -m)（Miniconda 仅提供 x86_64 / aarch64）"
+        exit 1
+        ;;
+    esac
+
     mkdir -p "$miniconda_dir"
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "$installer"
+    wget "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${mc_arch}.sh" -O "$installer"
     bash "$installer" -b -u -p "$miniconda_dir"
     rm -f "$installer"
     echo ">>> Miniconda 安装完成: $miniconda_dir"
