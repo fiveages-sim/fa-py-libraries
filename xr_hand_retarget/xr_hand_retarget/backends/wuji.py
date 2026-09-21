@@ -298,6 +298,7 @@ class WujiBackend:
         self._q_hold: np.ndarray | None = None
         self._was_held = True
         self._unlock = 0
+        self._dbg_n = 0
         pin_limits = np.asarray(robot.joint_limits, dtype=np.float64)
         try:
             self._q_limits = pin_limits[self._perm]
@@ -336,6 +337,14 @@ class WujiBackend:
                 f"  {i:02d} {cmd:28s} {pin_n:32s} {pi:4d} {lo:7.3f} {hi:7.3f}",
                 flush=True,
             )
+        # #region agent log
+        try:
+            import json as _json, time as _time
+            with open("/home/fiveages/fa-py-libraries/.cursor/debug-fc4a89.log", "a") as _f:
+                _f.write(_json.dumps({"sessionId":"fc4a89","hypothesisId":"H3","location":"wuji.py:init","message":"official qpos map","data":{"side":side,"perm":self._perm.tolist(),"identity":bool(same),"src":src,"n_pin":n_pin,"dof":self.dof,"pin_names":[canon_hand2_joint(n) for n in pin_names],"cmd_names":[canon_hand2_joint(n) for n in cmd_names]},"timestamp":int(_time.time()*1000)})+"\n")
+        except Exception:
+            pass
+        # #endregion
 
     def _hold(self, active: int, xyz_abs: float, reason: str, *, reset_unlock: bool = True) -> SideStep:
         if not self._was_held:
@@ -350,6 +359,16 @@ class WujiBackend:
             q = np.zeros(self.dof, dtype=np.float64)
         else:
             q = self._q_hold.copy()
+        # #region agent log
+        self._dbg_n += 1
+        if self._dbg_n <= 6 or self._dbg_n % 40 == 0:
+            try:
+                import json as _json, time as _time
+                with open("/home/fiveages/fa-py-libraries/.cursor/debug-fc4a89.log", "a") as _f:
+                    _f.write(_json.dumps({"sessionId":"fc4a89","hypothesisId":"H5","location":"wuji.py:hold","message":"official hold","data":{"side":self.side,"n":self._dbg_n,"active":active,"xyz_abs":xyz_abs,"reason":reason},"timestamp":int(_time.time()*1000)})+"\n")
+            except Exception:
+                pass
+        # #endregion
         return SideStep(q=q, active=active, held=True, xyz_abs=xyz_abs, reason=reason, sat=-1)
 
     def _shape_q(self, q: np.ndarray) -> np.ndarray:
@@ -395,12 +414,26 @@ class WujiBackend:
             self._was_held = False
             self._unlock = need
 
-        q = np.asarray(self._retargeter.retarget(mp21), dtype=np.float64).reshape(-1)
-        q = q[self._perm]
+        q_raw = np.asarray(self._retargeter.retarget(mp21), dtype=np.float64).reshape(-1)
+        q = q_raw[self._perm]
         q = self._shape_q(q)
+        dq = 0.0 if self._q_hold is None else float(np.max(np.abs(q - self._q_hold)))
         self._q_hold = q.copy()
         sat = -1
         if self._q_limits is not None:
             lo, hi = self._q_limits[:, 0], self._q_limits[:, 1]
             sat = int(np.sum((q - lo < 1e-3) | (hi - q < 1e-3)))
+        # #region agent log
+        self._dbg_n += 1
+        if self._dbg_n <= 8 or self._dbg_n % 20 == 0 or dq > 0.15:
+            try:
+                import json as _json, time as _time
+                wr = mp21 - mp21[0:1]
+                span = float(np.linalg.norm(wr, axis=1).max())
+                bones = [float(np.linalg.norm(mp21[b] - mp21[a])) for a, b in ((0, 5), (5, 8), (0, 9), (9, 12), (1, 4))]
+                with open("/home/fiveages/fa-py-libraries/.cursor/debug-fc4a89.log", "a") as _f:
+                    _f.write(_json.dumps({"sessionId":"fc4a89","hypothesisId":"H1,H2,H4","location":"wuji.py:step","message":"official step","data":{"side":self.side,"n":self._dbg_n,"active":active,"xyz_abs":xyz_abs,"jshape":list(raw.shape),"ncols":int(raw.shape[1]) if raw.ndim==2 else -1,"mp21":list(mp21.shape),"span_m":span,"bones_m":bones,"area":area,"q_raw_n":int(q_raw.size),"q_raw0":np.round(q_raw[:8],4).tolist(),"q_cmd0":np.round(q[:8],4).tolist(),"dq":dq,"sat":sat,"perm_id":bool(np.array_equal(self._perm, np.arange(self.dof)))},"timestamp":int(_time.time()*1000)})+"\n")
+            except Exception:
+                pass
+        # #endregion
         return SideStep(q=q, active=active, held=False, xyz_abs=xyz_abs, reason="ok", sat=sat)

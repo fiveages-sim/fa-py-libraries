@@ -9,6 +9,7 @@ from __future__ import annotations
 import numpy as np
 
 from xr_hand_retarget.sources.landmarks import OPENXR_TO_MEDIAPIPE, openxr26_to_mediapipe21
+from xr_hand_retarget.sources import openxr_joints as J
 from xr_hand_retarget.algorithms.safety_xhand1 import pose_is_zero
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "pose_is_zero",
     "wrist_origin_mp21",
     "palm_triangle_area_m2",
+    "openxr_palm_triangle_area_m2",
 ]
 
 
@@ -39,4 +41,15 @@ def palm_triangle_area_m2(landmarks21: np.ndarray) -> float:
         return 0.0
     a = lm[5, :3] - lm[0, :3]
     b = lm[9, :3] - lm[0, :3]
+    return 0.5 * float(np.linalg.norm(np.cross(a, b)))
+
+
+def openxr_palm_triangle_area_m2(joints26: np.ndarray) -> float:
+    """Same triangle in OpenXR 26 (wrist / index proximal / middle proximal)."""
+    raw = np.asarray(joints26, dtype=np.float64)
+    if raw.ndim != 2 or raw.shape[0] < J.NUM_JOINTS:
+        return 0.0
+    wrist = raw[J.WRIST, :3]
+    a = raw[J.INDEX_PROXIMAL, :3] - wrist
+    b = raw[J.MIDDLE_PROXIMAL, :3] - wrist
     return 0.5 * float(np.linalg.norm(np.cross(a, b)))

@@ -33,7 +33,10 @@ from xr_hand_retarget.kinematics import (
     make_linker_fk,
 )
 from xr_hand_retarget.safety import JointMotionFilter, MotionSafetyGains
-from xr_hand_retarget.landmarks import openxr26_to_mediapipe21, palm_triangle_area_m2
+from xr_hand_retarget.landmarks import (
+    openxr_palm_triangle_area_m2,
+    palm_triangle_area_m2,
+)
 from xr_hand_retarget.pipeline import SideStep
 
 FINGERS = ("index", "middle", "ring", "pinky")
@@ -526,15 +529,28 @@ class O6Backend:
         active = int(frame.active)
         raw = frame.ensure_joints26()
         xyz_abs = float(frame.xyz_abs)
-        if self._cfg.hold_on_inactive and active == 0:
-            return self._hold(active, xyz_abs, "inactive")
         if self._cfg.hold_on_zero_pose and pose_is_zero(raw):
             return self._hold(active, xyz_abs, "zero")
+        # Pico is_active flickers when the arm starts moving (UPDATE). Keep
+        # retargeting if the skeleton is still a real hand.
+        if self._cfg.hold_on_inactive and active == 0:
+            mp21 = frame.ensure_xyz21()
+            area = max(
+                palm_triangle_area_m2(mp21),
+                openxr_palm_triangle_area_m2(raw),
+            )
+            if area < float(self._cfg.min_palm_area_m2):
+                return self._hold(active, xyz_abs, "inactive")
 
         mp21 = frame.ensure_xyz21()
         area = palm_triangle_area_m2(mp21)
-        if area < float(self._cfg.min_palm_area_m2):
-            return self._hold(active, xyz_abs, f"palm={area:.2e}")
+        min_area = float(self._cfg.min_palm_area_m2)
+        if area < min_area:
+            ox = openxr_palm_triangle_area_m2(raw)
+            if ox >= min_area:
+                area = ox
+            else:
+                return self._hold(active, xyz_abs, f"palm={area:.2e}")
 
         need = max(int(self._cfg.unlock_frames), 1)
         if self._was_held:

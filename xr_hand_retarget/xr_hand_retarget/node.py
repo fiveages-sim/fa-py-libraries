@@ -190,51 +190,6 @@ def _discover_hand_controller(node, side: str, suffix: str, fallback: str) -> st
     return fallback
 
 
-def _try_stream_movej(node, controller: str) -> None:
-    """Session-only: BJC MOVEJ linear interpolates every new target.
-
-    Official teleop sends q every frame. Do not edit fa_w2 yaml; set params
-    on the running controller (updateParam reads them on each target).
-    """
-    name = controller.strip().strip("/")
-    try:
-        from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
-        from rcl_interfaces.srv import SetParameters
-        import rclpy
-    except ImportError:
-        return
-    client = node.create_client(SetParameters, f"/{name}/set_parameters")
-    if not client.wait_for_service(timeout_sec=1.5):
-        node.get_logger().warn(
-            f"[{name}] 遥操需要 MOVEJ 直通（官方每帧发 q）。请另开终端:\n"
-            f"  ros2 param set /{name} movej_interpolation_type none\n"
-            f"  ros2 param set /{name} movej_duration 0.02"
-        )
-        return
-    req = SetParameters.Request()
-    p_type = Parameter()
-    p_type.name = "movej_interpolation_type"
-    p_type.value = ParameterValue(
-        type=ParameterType.PARAMETER_STRING, string_value="none"
-    )
-    p_dur = Parameter()
-    p_dur.name = "movej_duration"
-    p_dur.value = ParameterValue(
-        type=ParameterType.PARAMETER_DOUBLE, double_value=0.02
-    )
-    req.parameters = [p_type, p_dur]
-    fut = client.call_async(req)
-    rclpy.spin_until_future_complete(node, fut, timeout_sec=2.0)
-    if fut.done() and fut.result() is not None:
-        node.get_logger().info(
-            f"[{name}] session MOVEJ stream: interpolation=none (fa_w2 yaml unchanged)"
-        )
-    else:
-        node.get_logger().warn(
-            f"[{name}] set_parameters timed out; run ros2 param set … interpolation_type none"
-        )
-
-
 def main(argv=None):
     args = _parse_args(argv)
 
@@ -249,7 +204,12 @@ def main(argv=None):
         raise SystemExit(1) from exc
 
     from xr_hand_retarget.config import load_runtime_config
-    from xr_hand_retarget.pipeline import SidePipeline, command_topic, wire_j2_lock_sub
+    from xr_hand_retarget.pipeline import (
+        SidePipeline,
+        command_topic,
+        try_stream_movej,
+        wire_j2_lock_sub,
+    )
 
     cfg = load_runtime_config(args.config)
     if args.rate is not None:
@@ -340,7 +300,7 @@ def main(argv=None):
         if cfg.stream_movej:
             for topic in topics.values():
                 ctrl = topic.strip("/").split("/")[0]
-                _try_stream_movej(node, ctrl)
+                try_stream_movej(node, ctrl)
         wire_j2_lock_sub(node, pipelines)
 
     print(
