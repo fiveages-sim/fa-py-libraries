@@ -44,9 +44,9 @@ usage() {
   echo
   echo "VR 遥操:"
   echo "  vr                       启动 vr_pose_publisher（Vuer/WebXR）"
-  echo "  vr-xrt [controller|wrist|hand]  启动 XRoboToolkit"
+  echo "  vr-xrt [controller|wrist]  启动 XRoboToolkit"
   echo "                           controller=手柄 6DoF 控臂+夹爪"
-  echo "                           wrist=光学腕 6DoF 控臂+灵巧手（空手手势）"
+  echo "                           wrist=光学腕 6DoF 控臂+灵巧手（交互菜单会再选手型）"
   echo "                           例: ./run.sh vr-xrt wrist"
   echo "                           wrist 运行中本终端: o=事件11(A/OCS2)  h=事件12(X/HOLD)，与脚踏板同一 /teleop/controller_state"
   echo "  vr-xrt-service [start]   启动 XRoboToolkit PC Service（runService.sh）"
@@ -289,21 +289,116 @@ run_vr_ocs2() {
   _ros2_topic_pub_once /fsm_command std_msgs/msg/Int32 "{data: 3}"
 }
 
+# Apply FA_HAND → FA_HAND_CONFIG (same mapping as configs/local_xr.sh).
+_apply_fa_hand() {
+  local hand="${1:?}"
+  case "${hand}" in
+    xhand1|xhand) hand=xhand1; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/xhand1.yaml" ;;
+    wuji|wuji_hand2|hand2) hand=wuji; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/wuji_hand2.yaml" ;;
+    o6|linkerhand_o6|linker_o6) hand=o6; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/o6.yaml" ;;
+    l6|linkerhand_l6|linker_l6) hand=l6; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/l6.yaml" ;;
+    o7|linkerhand_o7|linker_o7) hand=o7; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/o7.yaml" ;;
+    *)
+      echo "未知手型: ${hand}（应为 xhand1 | wuji | o6 | l6 | o7）"
+      return 1
+      ;;
+  esac
+  FA_HAND="$hand"
+  FA_HAND_CONFIG="$_FA_HAND_YAML"
+  FA_XHAND1_CONFIG="$FA_HAND_CONFIG"
+}
+
+# Persist last hand choice to configs/local.yaml (create from example if missing).
+_save_local_hand_type() {
+  local hand="$1"
+  local f="$ROOT_DIR/configs/local.yaml"
+  local ex="$ROOT_DIR/configs/local.yaml.example"
+  if [[ ! -f "$f" ]]; then
+    if [[ -f "$ex" ]]; then
+      cp "$ex" "$f"
+    else
+      printf 'hands:\n  type: %s\n' "$hand" >"$f"
+      return 0
+    fi
+  fi
+  python3 - "$f" "$hand" <<'PY'
+from pathlib import Path
+import re, sys
+path, hand = Path(sys.argv[1]), sys.argv[2]
+text = path.read_text(encoding="utf-8")
+new, n = re.subn(
+    r"(?m)^([ \t]*type:\s*)([A-Za-z0-9_+-]+)",
+    rf"\g<1>{hand}",
+    text,
+    count=1,
+)
+if n == 0:
+    if re.search(r"(?m)^hands:\s*$", text):
+        new = re.sub(r"(?m)^(hands:\s*)$", rf"\1\n  type: {hand}", text, count=1)
+    else:
+        new = text.rstrip() + f"\n\nhands:\n  type: {hand}\n"
+path.write_text(new, encoding="utf-8")
+PY
+}
+
+_prompt_hand_type() {
+  local current="${FA_HAND:-o6}"
+  case "${current}" in
+    xhand1|xhand) current=xhand1 ;;
+    wuji|wuji_hand2|hand2) current=wuji ;;
+    o6|linkerhand_o6|linker_o6) current=o6 ;;
+    l6|linkerhand_l6|linker_l6) current=l6 ;;
+    o7|linkerhand_o7|linker_o7) current=o7 ;;
+    *) current=o6 ;;
+  esac
+  local default_idx=3
+  case "${current}" in
+    xhand1) default_idx=1 ;;
+    wuji) default_idx=2 ;;
+    o6) default_idx=3 ;;
+    l6) default_idx=4 ;;
+    o7) default_idx=5 ;;
+  esac
+
+  echo ""
+  echo "请选择灵巧手 (上次: ${current}):"
+  echo "  1) xhand1"
+  echo "  2) wuji"
+  echo "  3) o6"
+  echo "  4) l6"
+  echo "  5) o7"
+  echo ""
+  local choice hand
+  read -r -p "请输入选项 [1-5] (默认: ${default_idx}=${current}): " choice
+  choice="${choice:-$default_idx}"
+  case "${choice}" in
+    1) hand=xhand1 ;;
+    2) hand=wuji ;;
+    3) hand=o6 ;;
+    4) hand=l6 ;;
+    5) hand=o7 ;;
+    *) echo "无效选项"; exit 1 ;;
+  esac
+  _apply_fa_hand "$hand" || exit 1
+  _save_local_hand_type "$hand"
+  echo ">>> 已选手型: FA_HAND=${FA_HAND} → ${FA_HAND_CONFIG}"
+}
+
 _prompt_vr_xrt_preset() {
   echo ""
   echo "请选择 XRT 追踪预置:"
-  echo "  1) controller — 手柄 6DoF 控臂 + 扳机夹爪（现网，握柄）"
+  echo "  1) controller — 手柄 6DoF 控臂 + 扳机夹爪"
   echo "  2) wrist      — 光学腕 6DoF 控臂 + 灵巧手（空手手势，关扳机）"
-  echo "  3) hand       — 与 wrist 相同"
-  echo "  0) 使用 yaml 默认"
   echo ""
   local choice
-  read -r -p "请输入选项 [0-3] (默认: 0): " choice
-  choice="${choice:-0}"
+  read -r -p "请输入选项 [1-2] (默认: 1): " choice
+  choice="${choice:-1}"
   case "${choice}" in
-    0) run_vr_xrt_launch ;;
     1) run_vr_xrt_launch controller ;;
-    2|3) run_vr_xrt_launch wrist ;;
+    2)
+      _prompt_hand_type
+      run_vr_xrt_launch wrist
+      ;;
     *) echo "无效选项"; exit 1 ;;
   esac
 }
