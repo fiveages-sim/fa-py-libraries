@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VR 遥操 ROS2 录包/回放：录制并回放 /teleop/* 话题（位姿、按键、摇杆、扳机）
+# VR 遥操 ROS2 录包/回放：录制并回放 /teleop/* 话题（位姿、按键、摇杆、扳机、体感追踪器）
 
 set -euo pipefail
 
@@ -27,6 +27,9 @@ XR_BAG_DEBUG_TOPICS=(
   /fsm_state
 )
 XR_BAG_TOPICS=("${XR_BAG_CORE_TOPICS[@]}" "${XR_BAG_DEBUG_TOPICS[@]}")
+# 体感追踪器（/teleop/tracker_<SN>_pose）话题名带序列号，无法静态列举：
+# 录制时按当前 ROS 图动态追加，回放核心范围时按 bag 中实际存在的话题动态追加。
+XR_BAG_RECORD_TOPICS=()
 XR_BAG_DIR="${XR_BAG_DIR:-$ROOT_DIR/xr_bags}"
 RECORD_NODE_NAME="${RECORD_NODE_NAME:-rosbag2_recorder}"
 
@@ -76,6 +79,37 @@ xr_bag_has_tty() {
   [[ -r /dev/tty ]]
 }
 
+# 当前 ROS 图中实际存在的体感追踪器话题（每行一个）
+xr_bag_list_live_tracker_topics() {
+  ros2 topic list 2>/dev/null | grep -E '^/teleop/tracker_' || true
+}
+
+# bag 中已录制的体感追踪器话题（每行一个，去重）
+xr_bag_list_bag_tracker_topics() {
+  local bag_path="$1"
+  # ros2 bag info 的 topic 行形如 "/teleop/tracker_xxx_pose: 20 msgs"，用 [^ :,] 截断到话题名
+  ros2 bag info "$bag_path" 2>/dev/null \
+    | grep -oE '/teleop/tracker_[^ :,]+' \
+    | sort -u || true
+}
+
+# 组装本次录制的话题列表：静态话题 + 动态发现的体感追踪器话题
+xr_bag_collect_record_topics() {
+  local topic
+  XR_BAG_RECORD_TOPICS=("${XR_BAG_TOPICS[@]}")
+  while IFS= read -r topic; do
+    if [[ -n "$topic" ]]; then
+      XR_BAG_RECORD_TOPICS+=("$topic")
+    fi
+  done < <(xr_bag_list_live_tracker_topics)
+
+  if ((${#XR_BAG_RECORD_TOPICS[@]} > ${#XR_BAG_TOPICS[@]})); then
+    echo "  ✓ 已追加体感追踪器话题: ${XR_BAG_RECORD_TOPICS[*]:${#XR_BAG_TOPICS[@]}}"
+  else
+    echo "  ℹ 未发现体感追踪器话题（未配对 / App 内未开启 Motion 追踪），跳过"
+  fi
+}
+
 xr_bag_info_duration() {
   local bag_path="$1"
   local info
@@ -109,7 +143,7 @@ xr_bag_prompt_playback_options() {
     fi
   fi
   if [[ "$scope_set" != true ]]; then
-    reply="$(xr_bag_read_line "回放范围 [c]仅核心 VR 话题(默认)/[a]全部录制话题: ")"
+    reply="$(xr_bag_read_line "回放范围 [c]仅核心 VR 话题(默认，含追踪器)/[a]全部录制话题: ")"
     if [[ "$reply" =~ ^[Aa]$ ]]; then
       _all_topics=true
     fi
@@ -162,7 +196,8 @@ usage() {
   echo "  --rate RATE   回放速率（默认 1.0）"
   echo "  --count N     回放次数（默认 1）"
   echo "  --no-stub     不启动虚拟 xr_target_node（默认会自动启动）"
-  echo "  --all-topics  回放全部录制话题（默认只回放核心 VR 话题：${XR_BAG_CORE_TOPICS[*]}）"
+  echo "  --all-topics  回放全部录制话题（默认只回放核心 VR 话题：${XR_BAG_CORE_TOPICS[*]}，"
+  echo "                以及该 bag 内实际存在的 /teleop/tracker_* 体感追踪器话题）"
   echo
   echo "clean 选项:"
   echo "  --all         删除全部 bag（需确认）"
@@ -249,8 +284,13 @@ on_playback_interrupt() {
 xr_bag_start_record() {
   local bag_path="$1"
   local log_file="$2"
+  local -a record_topics=("${XR_BAG_TOPICS[@]}")
 
-  setsid ros2 bag record -s mcap -o "$bag_path" --topics "${XR_BAG_TOPICS[@]}" \
+  if ((${#XR_BAG_RECORD_TOPICS[@]} > 0)); then
+    record_topics=("${XR_BAG_RECORD_TOPICS[@]}")
+  fi
+
+  setsid ros2 bag record -s mcap -o "$bag_path" --topics "${record_topics[@]}" \
     --disable-keyboard-controls \
     </dev/null >>"$log_file" 2>&1 &
   RECORD_PID=$!
@@ -395,7 +435,7 @@ xr_bag_check_topics() {
     for topic in "${missing[@]}"; do
       echo "      - $topic"
     done
-    echo "  提示: 请先在另一终端运行 ./run.sh vr"
+    echo "  提示: 请先在另一终端运行 ./run.sh vr 或 ./run.sh vr-xrt"
     if ! xr_bag_confirm "是否仍继续录制? [y/N]: "; then
       echo "已取消录制。"
       exit 0
@@ -628,7 +668,12 @@ xr_bag_write_session_info() {
   local session_name="$2"
   local recorded_at="$3"
   local info_file="$bag_path/session_info.txt"
+  local -a record_topics=("${XR_BAG_TOPICS[@]}")
   local topic
+
+  if ((${#XR_BAG_RECORD_TOPICS[@]} > 0)); then
+    record_topics=("${XR_BAG_RECORD_TOPICS[@]}")
+  fi
 
   {
     echo "session_name=$session_name"
@@ -636,7 +681,7 @@ xr_bag_write_session_info() {
     echo "bag_path=$bag_path"
     echo -n "topics="
     local first=1
-    for topic in "${XR_BAG_TOPICS[@]}"; do
+    for topic in "${record_topics[@]}"; do
       if ((first)); then
         echo -n "$topic"
         first=0
@@ -679,9 +724,10 @@ cmd_record() {
   echo
   echo "保存目录: $XR_BAG_DIR"
   echo "录制话题: ${XR_BAG_TOPICS[*]}"
+  echo "           + /teleop/tracker_*（体感追踪器，录制前按当前 ROS 图动态发现）"
   echo
   echo "操作说明:"
-  echo "  - 请确保另一终端已运行 ./run.sh vr"
+  echo "  - 请确保另一终端已运行 ./run.sh vr 或 ./run.sh vr-xrt"
   echo "  - 安全建议：开始录制前将机器人置于 HOLD 状态"
   echo "  - 按 Enter 开始录制"
   echo "  - 录制开始后，按 Enter 停止（需等待「正在停止录制...」）"
@@ -698,6 +744,7 @@ cmd_record() {
   echo
   echo "检查 VR 话题..."
   xr_bag_check_topics
+  xr_bag_collect_record_topics
 
   recorded_at="$(date '+%Y-%m-%d %H:%M:%S')"
   if [[ -n "$session_name" ]]; then
@@ -824,8 +871,16 @@ cmd_playback() {
   if $all_topics; then
     scope_desc="全部录制话题"
   else
-    play_topic_args=(--topics "${XR_BAG_CORE_TOPICS[@]}")
-    scope_desc="核心 VR 话题（${XR_BAG_CORE_TOPICS[*]}）"
+    # 核心范围：静态核心话题 + 该 bag 中实际录制到的体感追踪器话题
+    local -a core_topics=("${XR_BAG_CORE_TOPICS[@]}")
+    local tracker_topic
+    while IFS= read -r tracker_topic; do
+      if [[ -n "$tracker_topic" ]]; then
+        core_topics+=("$tracker_topic")
+      fi
+    done < <(xr_bag_list_bag_tracker_topics "$bag_path")
+    play_topic_args=(--topics "${core_topics[@]}")
+    scope_desc="核心 VR 话题（${core_topics[*]}）"
   fi
 
   duration="$(xr_bag_info_duration "$bag_path")"
