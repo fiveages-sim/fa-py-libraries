@@ -121,11 +121,31 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 |------|---------------|-------------------|
 | 输入 | 头显浏览器 WebXR（Vuer） | XRoboToolkit SDK |
 | 头显 App | 浏览器 | XRoboToolkit Unity App |
-| 发布话题 | `/teleop/*` | `/teleop/*`（相同契约） |
+| 发布话题 | `/teleop/*` | `/teleop/*`（相同契约）+ `/teleop/tracker_<SN>_pose` |
+
+#### 体感追踪器（可选，仅 `vr-xrt`）
+
+用 Pico 体感追踪器（Tracker Independent Tracking）时：
+
+1. 在头显内完成追踪器**配对与校准**；
+2. 打开 XRoboToolkit App 控制面板，**开启 Motion / Tracker 追踪开关**（未开启时 SDK 数据里不含
+   `Motion` 字段，节点不会发布对应话题）；
+3. 启动 `./run.sh vr-xrt` 后话题按序列号**动态出现**（最多 3 个）：
+
+```bash
+ros2 topic list | grep '/teleop/tracker_'
+ros2 topic echo /teleop/tracker_<SN>_pose
+
+# 不需要追踪器时关闭该发布
+XRT_TRACKERS=0 ./run.sh vr-xrt
+```
+
+位姿与头显/手柄处于同一世界坐标系（`geometry_msgs/Pose`，单位米）；详细契约见
+`vr_pose_publisher/docs/PROTOCOL_CN.md` 的「体感追踪器位姿话题」一节。
 
 ### VR 遥操录包 / 回放
 
-将 VR 发布的 `/teleop/*` 话题（头显/手柄位姿、按键、摇杆、扳机）录制为 ros2 bag，之后可离线回放以模拟 VR 输入（供 `VRInputHandler` 消费）。底层脚本为 `scripts/vr-bag.sh`，推荐通过 `run.sh` 调用。
+将 VR 发布的 `/teleop/*` 话题（头显/手柄位姿、按键、摇杆、扳机、体感追踪器）录制为 ros2 bag，之后可离线回放以模拟 VR 输入（供 `VRInputHandler` 消费）。底层脚本为 `scripts/vr-bag.sh`，推荐通过 `run.sh` 调用。
 
 **前置条件**
 
@@ -145,6 +165,8 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 操作流程：输入会话名（可选）→ 按 Enter 开始录制 → 进行 VR 遥操 → 再按 Enter 停止。bag 默认保存到 `xr_bags/`（可用环境变量 `XR_BAG_DIR` 覆盖）。
 
 录制话题：`/teleop/head_pose`、`/teleop/left_ee_pose`、`/teleop/right_ee_pose`、`/teleop/controller_state`、`/teleop/thumbstick_axes`、`/teleop/trigger_values`
+
+体感追踪器话题（`/teleop/tracker_<SN>_pose`）名字带序列号，**录制时会按当前 ROS 图自动追加**；回放「核心范围」时也会自动带上该 bag 里实际录到的追踪器话题。未开启追踪器时不会追加，不影响原有流程。
 
 **回放**
 
