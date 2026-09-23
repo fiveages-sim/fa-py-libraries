@@ -21,6 +21,8 @@ from xr_hand_retarget.pipeline import (
 _FSM_HOME = 1
 _FSM_HOLD = 2
 _FSM_OCS2 = 3
+_CONTROLLER_STATE_TOPIC = "/teleop/controller_state"
+_EVENT_MIRROR = 7
 
 
 class DualHandRetargetNode(Node):
@@ -59,6 +61,8 @@ class DualHandRetargetNode(Node):
         self._fsm = 0
         self._last_heartbeat = 0.0
         self._hold_heartbeat_dt = 0.2
+        # Match VRInputHandler case 7: left optical → right hand controller and vice versa.
+        self._mirror = False
 
         self._left = SidePipeline("left", cfg, retargeting_type, xrt=xrt)
         self._right = SidePipeline("right", right_cfg, right_retargeting, xrt=xrt)
@@ -80,6 +84,9 @@ class DualHandRetargetNode(Node):
         fsm_qos.reliability = ReliabilityPolicy.RELIABLE
         fsm_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.create_subscription(Int32, "/fsm_state", self._on_fsm, fsm_qos)
+        self.create_subscription(
+            Int32, _CONTROLLER_STATE_TOPIC, self._on_controller_state, 10
+        )
 
         if auto_movej and (fsm_topic or cfg.fsm_topic):
             topic = fsm_topic or cfg.fsm_topic
@@ -147,6 +154,21 @@ class DualHandRetargetNode(Node):
         if self._fsm == _FSM_OCS2 and self._stream_movej is not None:
             self._stream_movej.kick(force=True)
 
+    def _on_controller_state(self, msg: Int32) -> None:
+        """Toggle hand L/R publish swap with VRInputHandler mirror (event 7)."""
+        if int(msg.data) != _EVENT_MIRROR:
+            return
+        self._mirror = not self._mirror
+        self.get_logger().warn(
+            f"Hand mirror={'ON (L optical→R ctrl, R→L)' if self._mirror else 'OFF'}"
+        )
+
+    def _pub_for_optical_side(self, side: str):
+        """Optical left/right → controller topic (swapped when mirror)."""
+        if self._mirror:
+            return self._pub_right if side == "left" else self._pub_left
+        return self._pub_left if side == "left" else self._pub_right
+
     def _live(self) -> bool:
         return self._fsm == _FSM_OCS2
 
@@ -174,13 +196,13 @@ class DualHandRetargetNode(Node):
         if now - self._last_heartbeat < self._hold_heartbeat_dt:
             return
         self._last_heartbeat = now
-        for side, pub in (("left", self._pub_left), ("right", self._pub_right)):
+        for side in ("left", "right"):
             prev = self._last_sent[side]
             if prev is None:
                 continue
             msg = Float64MultiArray()
             msg.data = [float(x) for x in prev.tolist()]
-            pub.publish(msg)
+            self._pub_for_optical_side(side).publish(msg)
 
     def _skip_teleop(self, now: float, src: str) -> None:
         self._dbg_n += 1
@@ -241,11 +263,11 @@ class DualHandRetargetNode(Node):
         if left is not None:
             if left.held:
                 self._held["left"] += 1
-            self._maybe_publish("left", self._pub_left, left)
+            self._maybe_publish("left", self._pub_for_optical_side("left"), left)
         if right is not None:
             if right.held:
                 self._held["right"] += 1
-            self._maybe_publish("right", self._pub_right, right)
+            self._maybe_publish("right", self._pub_for_optical_side("right"), right)
 
         now = time.time()
         if self._print_every > 0 and (now - self._last_print) >= self._print_every:
