@@ -120,7 +120,7 @@ command:
 | 可视化 | `viser` | 启动 ros2-viser |
 | VR 遥操 | `vr` | vr_pose_publisher（Vuer/WebXR） |
 | VR 遥操 | `vr-hand` | 交互选手型后启动手部遥操（光学腕 + 灵巧手） |
-| VR 遥操 | `vr-xrt [controller\|wrist]` | XRoboToolkit：`controller`=手柄+夹爪；`wrist`=光学腕+灵巧手（可 `--no-hands`） |
+| VR 遥操 | `vr-xrt [controller\|wrist]` | XRoboToolkit：`controller`=手柄+夹爪；`wrist`=光学腕+灵巧手（可 `--no-hands`）；启动时会询问是否启用图像视频传输并选择话题 |
 | VR 遥操 | `vr-xrt-service [start\|stop]` | 启动 / 关闭 XRoboToolkit PC Service |
 | VR 辅助 | `vr-update` | 临时发右摇杆 UPDATE（`controller_state=4`；须已 OCS2） |
 | VR 辅助 | `vr-ocs2` | 临时发 OCS2（`/fsm_command=3`，无脚踏板时用） |
@@ -192,6 +192,45 @@ XRT_TRACKERS=0 ./run.sh vr-xrt
 位姿与头显/手柄处于同一世界坐标系（`geometry_msgs/Pose`，单位米）；详细契约见
 `vr_pose_publisher/docs/PROTOCOL_CN.md` 的「体感追踪器位姿话题」一节。
 
+#### 将 ROS 图像接入头显画面（可选，仅 `vr-xrt`）
+
+把任意 ROS2 图像话题（仿真相机、RealSense 等）实时显示到头显 **XRoboToolkit App →
+Remote Vision** 面板。基于官方 `XRoboToolkit-Orin-Video-Sender` 的 H.264 TCP 协议，
+单目画面会自动复制成左右两半以复用内置的 ZEDMINI 立体视频源（无需改头显配置）。
+
+```bash
+# 安装编码依赖（PyAV，自带 ffmpeg/libx264）
+./init.sh install-video
+
+# 启动 vr-xrt，命令行会询问「是否启用图像视频传输」
+./run.sh vr-xrt
+#   -> 回答 y 后列出检测到的 RGB 图像话题
+#      输入编号选中，或直接输入以 / 开头的话题名；留空 = 自动搜索
+
+# 跳过询问（CI、管道、后台任务）：用环境变量直接指定
+XR_IMAGE_TOPIC=auto ./run.sh vr-xrt                # 自动搜索 RGB 话题
+XR_IMAGE_TOPIC=/head_camera/rgb ./run.sh vr-xrt    # 直接指定话题
+XR_IMAGE_TOPIC= ./run.sh vr-xrt                    # 留空 = 不启用
+```
+
+图像桥由 `XRTargetNode` 拉起的**独立子进程**承载，图像订阅、H.264 编码、TCP
+推流全在子进程内完成：视频链路的崩溃或卡顿不会影响 `/teleop/*` 姿态发布，
+反之姿态遥操也不会被编码拖累。详见
+[`vr_pose_publisher/docs/ROS_IMAGE_TO_VR_CN.md`](vr_pose_publisher/docs/ROS_IMAGE_TO_VR_CN.md)。
+
+头显端：XRoboToolkit App → **Remote Vision** → 视频源选 **ZEDMINI** → **Listen** →
+输入 PC 的 IP → **Confirm**。
+
+无头显时可用模拟客户端验证：
+
+```bash
+python vr_pose_publisher/tests/fake_headset_client.py --port 13579 --frames 60 --save /tmp/out.h264
+ffplay /tmp/out.h264
+```
+
+完整说明（参数、环境变量、自动搜索规则、布局、排障）见
+[`vr_pose_publisher/docs/ROS_IMAGE_TO_VR_CN.md`](vr_pose_publisher/docs/ROS_IMAGE_TO_VR_CN.md)。
+
 ### VR 遥操录包 / 回放
 
 将 VR 发布的 `/teleop/*` 话题录制为 ros2 bag，之后可离线回放以模拟 VR 输入。底层脚本为 `scripts/vr-bag.sh`，推荐通过 `run.sh` 调用。
@@ -242,6 +281,11 @@ XRT_TRACKERS=0 ./run.sh vr-xrt
 ./init.sh install --conda
 ./init.sh install-xrobotoolkit-pc-service
 ./init.sh install-xrobotoolkit
+
+# 可选：安装 ROS 图像接入 VR（Remote Vision）的编码依赖 PyAV
+./init.sh install-video
+
+# 配置 ROS2 工作空间（写入 .fa-env.toml + 按 backend 写 activate 挂钩）
 ./init.sh ros2-workspace          # --all 则 conda+uv 都挂钩
 ./init.sh pypi-mirror
 ./init.sh uv-mirror
@@ -256,6 +300,7 @@ XRT_TRACKERS=0 ./run.sh vr-xrt
 FA_HAND=o6 ./run.sh vr-xrt wrist
 FA_HAND=none ./run.sh vr-xrt wrist
 ./run.sh vr-xrt wrist --no-hands
+XR_IMAGE_TOPIC=auto ./run.sh vr-xrt        # 图像视频传输：自动搜索 RGB 话题
 ./run.sh vr-update
 ./run.sh vr-ocs2
 ./run.sh vr-record
