@@ -35,6 +35,7 @@ print_usage() {
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
   echo "  install-xrobotoolkit-pc-service  安装官方 XRoboToolkit-PC-Service deb（按 Ubuntu 版本下载）"
   echo "  install-xrobotoolkit  安装 PC Service（若未装）+ xrobotoolkit_sdk（vr_pose_publisher/dependencies/）"
+  echo "  install-video  安装 ROS→VR 图像桥依赖 PyAV（图像接入头显 Remote Vision，可选）"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
   echo "  install-miniconda  安装 Miniconda 到 ~/miniconda3 并关闭 base 自动激活"
@@ -589,6 +590,38 @@ install_xrobotoolkit() {
   )
 }
 
+# ROS 图像 → PICO XRoboToolkit App（Remote Vision）视频桥的编码依赖。
+install_ros_image_deps() {
+  local vr_dir="$ROOT_DIR/vr_pose_publisher"
+  local req="av>=12.0.0"
+
+  fa_env_load_config "$ROOT_DIR"
+  if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
+    FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
+  fi
+
+  if [[ ! -d "$vr_dir" ]]; then
+    echo "未找到目录: $vr_dir"
+    echo "请先执行子模块初始化与 ./init.sh install。"
+    exit 1
+  fi
+
+  echo ">>> 安装 ROS→VR 图像桥依赖 PyAV（自带 ffmpeg/libx264），backend=$FA_ENV_BACKEND"
+  (
+    set +u
+    fa_env_activate "$ROOT_DIR"
+    if [[ "$FA_ENV_BACKEND" == "uv" ]]; then
+      uv pip install "$req"
+    else
+      python -m pip install "$req"
+    fi
+  )
+  echo ">>> 完成。用法："
+  echo "    ./run.sh vr-xrt                      启动时会询问是否启用并选择图像话题"
+  echo "    XR_IMAGE_TOPIC=auto ./run.sh vr-xrt  自动搜索 RGB 话题（跳过询问）"
+  echo "    XR_IMAGE_TOPIC=/head_camera/rgb ./run.sh vr-xrt  直接指定话题"
+}
+
 configure_ros2_workspace_source() {
   local ws_input ws_stored apply_all=0
   local arg
@@ -799,25 +832,26 @@ interactive_menu() {
   echo "    4) 安装 interface / viser / vr"
   echo "    5) 安装 XRoboToolkit PC Service（官方 deb）"
   echo "    6) 安装 XRoboToolkit SDK（VR XRT 后端，含 PC Service 检测）"
+  echo "    7) 安装 ROS→VR 图像桥依赖（PyAV，图像接入头显 Remote Vision）"
   echo
   echo "  [一键执行]"
-  echo "    7) 全部执行（子模块 + 环境 + 安装）"
+  echo "    8) 全部执行（子模块 + 环境 + 安装）"
   echo
   echo "  [配置]"
   if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
-    echo "    8) 安装 Miniconda"
-    echo "    9) 配置 NJU PyPI 镜像（pip）"
+    echo "    9) 安装 Miniconda"
+    echo "   10) 配置 NJU PyPI 镜像（pip）"
   else
-    echo "    8) 安装 uv"
-    echo "    9) 配置 uv PyPI 镜像（清华）"
+    echo "    9) 安装 uv"
+    echo "   10) 配置 uv PyPI 镜像（清华）"
   fi
-  echo "   10) 配置 ROS2 工作空间"
-  echo "   11) 切换 backend (conda/uv)"
+  echo "   11) 配置 ROS2 工作空间"
+  echo "   12) 切换 backend (conda/uv)"
   echo
   echo "  [其他]"
   echo "    q) 退出"
   echo
-  read -r -p "输入选项 [1-11/q]: " choice
+  read -r -p "输入选项 [1-12/q]: " choice
 
   case "$choice" in
     1)
@@ -841,6 +875,9 @@ interactive_menu() {
       install_xrobotoolkit
       ;;
     7)
+      install_ros_image_deps
+      ;;
+    8)
       read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
       if submodules_have_content; then
         run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
@@ -849,24 +886,24 @@ interactive_menu() {
         run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
       fi
       ;;
-    8)
+    9)
       if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
         install_miniconda
       else
         install_uv
       fi
       ;;
-    9)
+    10)
       if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
         configure_nju_pypi_mirror
       else
         configure_uv_mirror
       fi
       ;;
-    10)
+    11)
       configure_ros2_workspace_source
       ;;
-    11)
+    12)
       read -r -p "输入 backend [conda/uv]（当前 $FA_ENV_BACKEND）: " backend_choice
       backend_choice="${backend_choice:-$FA_ENV_BACKEND}"
       fa_env_set_backend "$backend_choice"
@@ -906,6 +943,10 @@ main() {
       ;;
     install-xrobotoolkit-pc-service)
       install_xrobotoolkit_pc_service "$@"
+      ;;
+    install-video)
+      parse_install_backend_args "$@"
+      install_ros_image_deps
       ;;
     install-uv)
       install_uv

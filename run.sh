@@ -29,6 +29,7 @@ usage() {
   echo "VR 遥操:"
   echo "  vr                       启动 vr_pose_publisher（Vuer/WebXR）"
   echo "  vr-xrt                   启动 vr_pose_publisher（XRoboToolkit SDK）"
+  echo "                           启动时可选启用图像视频传输并指定话题"
   echo "  vr-xrt-service [start]   启动 XRoboToolkit PC Service（runService.sh）"
   echo "  vr-xrt-service stop      关闭 XRoboToolkit PC Service"
   echo "  vr-record [--name 名称]  录制 /teleop/* 话题到 ros2 bag"
@@ -83,6 +84,113 @@ run_vr_launch() {
   echo ">>> 启动 vr pose launch (Vuer/WebXR)"
   python "$script_path"
 }
+
+# -----------------------------------------------------------------------------
+# ROS 图像 → 头显 Remote Vision（XRoboToolkit）
+# -----------------------------------------------------------------------------
+# 图像推流已整合进 vr-xrt（XRTargetNode 拉起的独立视频子进程），
+# 不再提供独立入口；启动 vr-xrt 时会询问是否启用并选择话题。
+
+# -----------------------------------------------------------------------------
+# 启动 vr-xrt 前的视频传输询问（是否启用 + 图像话题）
+# -----------------------------------------------------------------------------
+
+# 列出检测到的 RGB 图像话题（编号清单）。
+# 复用节点侧的排序逻辑（xr_video_bridge.image_topics_menu_lines），
+# 保证这里显示的编号与节点自动搜索时的优先级一致。
+#
+# 结果同时缓存在 IMAGE_TOPICS_MENU：每次枚举都要另起一个 rclpy 进程等话题发现，
+# 若显示与取编号分别枚举一次，不仅慢，还可能因两次看到的 ROS 图不同而错位。
+IMAGE_TOPICS_MENU=""
+list_image_topics_menu() {
+  local script_path="$ROOT_DIR/vr_pose_publisher/launch_xrobotoolkit.py"
+  if ! IMAGE_TOPICS_MENU="$(python "$script_path" --list-image-topics 2>/dev/null)"; then
+    IMAGE_TOPICS_MENU=""
+    echo ">>> 话题枚举失败（仿真未启动？）"
+    return 1
+  fi
+  if [[ -z "$IMAGE_TOPICS_MENU" ]]; then
+    echo ">>> 未发现 sensor_msgs/msg/Image 话题；可稍后重试，或直接输入 / 开头的话题名"
+  else
+    printf '%s\n' "$IMAGE_TOPICS_MENU"
+  fi
+}
+
+# 询问是否启用视频传输并选择图像话题，结果 export 到 XR_IMAGE_TOPIC。
+#
+# 跳过询问的情形（直接沿用环境变量，避免破坏自动化/管道用法）：
+#   * XR_IMAGE_TOPIC / VR_IMAGE_TOPIC 已设置（显式意图优先）
+#   * stdin 不是终端（CI、后台任务、管道）
+prompt_vr_video_topic() {
+  # 已由环境变量指定 → 不再打扰用户
+  if [[ -n "${XR_IMAGE_TOPIC:-}" || -n "${VR_IMAGE_TOPIC:-}" ]]; then
+    echo ">>> 视频传输话题已由环境变量指定: ${XR_IMAGE_TOPIC:-${VR_IMAGE_TOPIC}}"
+    return 0
+  fi
+  if [[ ! -t 0 ]]; then
+    echo ">>> 非交互终端，跳过视频传输询问（如需启用请设置 XR_IMAGE_TOPIC=/话题名）"
+    return 0
+  fi
+
+  local answer=""
+  read -r -p ">>> 是否启用图像视频传输（送进头显 Remote Vision）? [y/N]: " answer || return 0
+  case "${answer,,}" in
+    y|yes) ;;
+    *) echo ">>> 已跳过图像视频传输"; return 0 ;;
+  esac
+
+  echo
+  echo ">>> 正在检测可用图像话题..."
+  list_image_topics_menu
+  echo
+
+  local choice="" topic=""
+  local attempts=0
+  while (( attempts < 3 )); do
+    # EOF（Ctrl-D / 输入被重定向）视作放弃选择，跳过而非中断整个脚本
+    read -r -p ">>> 输入图像话题编号，或直接输入以 / 开头的话题名（留空=自动搜索）: " choice || return 0
+    choice="${choice#"${choice%%[![:space:]]*}"}"   # 去首空白
+    choice="${choice%"${choice##*[![:space:]]}"}"   # 去尾空白
+
+    if [[ -z "$choice" ]]; then
+      topic="auto"
+      break
+    fi
+    # 纯数字 → 取清单里的第 N 项（用缓存清单，不重新枚举）
+    if [[ "$choice" =~ ^[0-9]+$ ]]; then
+      # 清单格式为 "  [N] /topic/name"
+      topic="$(printf '%s\n' "$IMAGE_TOPICS_MENU" \
+        | sed -n "s/^[[:space:]]*\[\(${choice}\)\][[:space:]]*\(.*\)$/\2/p" | head -n1)"
+      if [[ -n "$topic" ]]; then
+        break
+      fi
+      echo ">>> 无效编号: $choice（请在上面的清单范围内，或直接输入 / 开头的话题名）"
+    elif [[ "$choice" == /* ]]; then
+      topic="$choice"
+      break
+    else
+      echo ">>> 无效输入: $choice（需为编号，或以 / 开头的话题名）"
+    fi
+    attempts=$((attempts + 1))
+  done
+
+  if [[ -z "${topic:-}" ]]; then
+    echo ">>> 多次输入无效，已跳过图像视频传输"
+    return 0
+  fi
+
+  export XR_IMAGE_TOPIC="$topic"
+  if ! python -c "import av" >/dev/null 2>&1; then
+    echo ">>> ⚠️  未检测到 PyAV（图像编码依赖），视频传输将无法推流"
+    echo ">>>     请先运行: ./init.sh install-video"
+  fi
+  echo ">>> 已启用图像视频传输: XR_IMAGE_TOPIC=$topic"
+  echo ">>> 头显: XRoboToolkit App → Remote Vision → 视频源选 ZEDMINI → Listen → 输入本机 IP"
+}
+
+# -----------------------------------------------------------------------------
+# XRoboToolkit PC Service
+# -----------------------------------------------------------------------------
 
 XRT_PC_SERVICE_SCRIPT="/opt/apps/roboticsservice/runService.sh"
 XRT_PC_SERVICE_PROCESS="RoboticsServiceProcess"
@@ -191,6 +299,8 @@ run_vr_xrt_launch() {
     echo ">>> 可先运行: ./run.sh vr-xrt-service"
     echo ">>> 或从应用菜单打开 XRoboToolkit-PC-Service"
   fi
+  # 询问是否启用图像视频传输（已在环境变量里指定则直接沿用）
+  prompt_vr_video_topic
   echo ">>> 启动 vr pose launch (XRoboToolkit)"
   echo ">>> 请确认: PC Service 已运行，Pico App 已连接"
   python "$script_path"

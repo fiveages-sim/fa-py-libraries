@@ -73,7 +73,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 |------|------|------|
 | 可视化 | `viser` | 启动 ros2-viser |
 | VR 遥操 | `vr` | 启动 vr_pose_publisher（Vuer/WebXR） |
-| VR 遥操 | `vr-xrt` | 启动 vr_pose_publisher（XRoboToolkit SDK） |
+| VR 遥操 | `vr-xrt` | 启动 vr_pose_publisher（XRoboToolkit SDK）；启动时会询问是否启用图像视频传输并选择话题 |
 | VR 遥操 | `vr-xrt-service [start\|stop]` | 启动 / 关闭 XRoboToolkit PC Service（`runService.sh`） |
 | VR 录放 | `vr-record [--name 名称]` | 录制 `/teleop/*` 到 ros2 bag |
 | VR 录放 | `vr-playback [选项]` | 回放 bag（`--file` `--rate` `--count`） |
@@ -93,9 +93,10 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
                   6) VR 遥操录包
                   7) VR 遥操回放
                   8) VR bag 清理
-  [机器人关节录放] 9) interface 录制
-                  10) interface 回放
-  [其他]          11) 查看各库版本号
+                  9) ROS 图像接入 VR (Remote Vision)
+  [机器人关节录放] 10) interface 录制
+                  11) interface 回放
+  [其他]          12) 查看各库版本号
 ```
 
 ### XRoboToolkit 后端（可选）
@@ -142,6 +143,45 @@ XRT_TRACKERS=0 ./run.sh vr-xrt
 
 位姿与头显/手柄处于同一世界坐标系（`geometry_msgs/Pose`，单位米）；详细契约见
 `vr_pose_publisher/docs/PROTOCOL_CN.md` 的「体感追踪器位姿话题」一节。
+
+#### 将 ROS 图像接入头显画面（可选，仅 `vr-xrt`）
+
+把任意 ROS2 图像话题（仿真相机、RealSense 等）实时显示到头显 **XRoboToolkit App →
+Remote Vision** 面板。基于官方 `XRoboToolkit-Orin-Video-Sender` 的 H.264 TCP 协议，
+单目画面会自动复制成左右两半以复用内置的 ZEDMINI 立体视频源（无需改头显配置）。
+
+```bash
+# 安装编码依赖（PyAV，自带 ffmpeg/libx264）
+./init.sh install-video
+
+# 启动 vr-xrt，命令行会询问「是否启用图像视频传输」
+./run.sh vr-xrt
+#   -> 回答 y 后列出检测到的 RGB 图像话题
+#      输入编号选中，或直接输入以 / 开头的话题名；留空 = 自动搜索
+
+# 跳过询问（CI、管道、后台任务）：用环境变量直接指定
+XR_IMAGE_TOPIC=auto ./run.sh vr-xrt                # 自动搜索 RGB 话题
+XR_IMAGE_TOPIC=/head_camera/rgb ./run.sh vr-xrt    # 直接指定话题
+XR_IMAGE_TOPIC= ./run.sh vr-xrt                    # 留空 = 不启用
+```
+
+图像桥由 `XRTargetNode` 拉起的**独立子进程**承载，图像订阅、H.264 编码、TCP
+推流全在子进程内完成：视频链路的崩溃或卡顿不会影响 `/teleop/*` 姿态发布，
+反之姿态遥操也不会被编码拖累。详见
+[`vr_pose_publisher/docs/ROS_IMAGE_TO_VR_CN.md`](vr_pose_publisher/docs/ROS_IMAGE_TO_VR_CN.md)。
+
+头显端：XRoboToolkit App → **Remote Vision** → 视频源选 **ZEDMINI** → **Listen** →
+输入 PC 的 IP → **Confirm**。
+
+无头显时可用模拟客户端验证：
+
+```bash
+python vr_pose_publisher/tests/fake_headset_client.py --port 13579 --frames 60 --save /tmp/out.h264
+ffplay /tmp/out.h264
+```
+
+完整说明（参数、环境变量、自动搜索规则、布局、排障）见
+[`vr_pose_publisher/docs/ROS_IMAGE_TO_VR_CN.md`](vr_pose_publisher/docs/ROS_IMAGE_TO_VR_CN.md)。
 
 ### VR 遥操录包 / 回放
 
@@ -233,6 +273,9 @@ XRT_TRACKERS=0 ./run.sh vr-xrt
 ./init.sh install-xrobotoolkit-pc-service
 ./init.sh install-xrobotoolkit
 
+# 可选：安装 ROS 图像接入 VR（Remote Vision）的编码依赖 PyAV
+./init.sh install-video
+
 # 配置 ROS2 工作空间（写入 .fa-env.toml + 按 backend 写 activate 挂钩）
 ./init.sh ros2-workspace
 # 若 conda 与 uv 都要挂钩：./init.sh ros2-workspace --all
@@ -247,6 +290,7 @@ XRT_TRACKERS=0 ./run.sh vr-xrt
 ./run.sh vr-xrt-service
 ./run.sh vr-xrt-service stop
 ./run.sh vr-xrt
+XR_IMAGE_TOPIC=auto ./run.sh vr-xrt        # 图像视频传输：自动搜索 RGB 话题
 ./run.sh vr-record
 ./run.sh vr-playback
 ./run.sh vr-bag-clean
