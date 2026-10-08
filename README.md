@@ -131,15 +131,15 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 1. 在头显内完成追踪器**配对与校准**；
 2. 打开 XRoboToolkit App 控制面板，**开启 Motion / Tracker 追踪开关**（未开启时 SDK 数据里不含
    `Motion` 字段，节点不会发布对应话题）；
-3. 启动 `./run.sh vr-xrt` 后话题按序列号**动态出现**（最多 3 个）：
+3. 启动 `./run.sh vr-xrt` 后，追踪器数据一到话题就按序列号**自动注册并出现**（最多 3 个，
+   无需任何开关；运行中随时在头显里开关追踪都会实时反映）：
 
 ```bash
 ros2 topic list | grep '/teleop/tracker_'
 ros2 topic echo /teleop/tracker_<SN>_pose
-
-# 不需要追踪器时关闭该发布
-XRT_TRACKERS=0 ./run.sh vr-xrt
 ```
+
+某个追踪器连续 **5 秒**无数据时，节点会自动销毁其话题；重新开启追踪后自动恢复。
 
 位姿与头显/手柄处于同一世界坐标系（`geometry_msgs/Pose`，单位米）；详细契约见
 `vr_pose_publisher/docs/PROTOCOL_CN.md` 的「体感追踪器位姿话题」一节。

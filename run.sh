@@ -22,6 +22,8 @@ usage() {
   echo "不带参数时进入交互菜单。"
   echo "Python 环境由 .fa-env.toml 的 backend 决定（conda | uv），可用 ./init.sh set-backend 切换。"
   echo "临时覆盖: FA_ENV_BACKEND=uv ./run.sh viser"
+  echo "注: RMW_IMPLEMENTATION 为 zenoh 时，若本机没有可达的 router（默认 127.0.0.1:7447），"
+  echo "    启动任何 ROS 功能前会自动后台拉起 rmw_zenohd，无需另开终端。"
   echo
   echo "可视化:"
   echo "  viser                    启动 ros2-viser 的 launch.py"
@@ -55,6 +57,111 @@ ensure_python_env() {
   set -u
 }
 
+# -----------------------------------------------------------------------------
+# Zenoh router（rmw_zenoh_cpp 的跨进程发现依赖它）
+# -----------------------------------------------------------------------------
+# rmw_zenoh_cpp 默认是 client 模式，**必须**经 router 才能与其他进程互相发现。
+# 没有 router 时节点照样初始化成功（日志只有一条 "Unable to connect to a
+# Zenoh router" 警告），但收不到任何对端数据，排障时极难定位。
+# 这里在每次启动前探测一次，没有就自动拉起，省得用户另开终端手敲。
+
+# bash 内建 /dev/tcp 探测端口，无需 nc / ss 等外部依赖
+zenoh_tcp_reachable() {
+  local host="$1" port="$2"
+  (exec 3<>"/dev/tcp/${host}/${port}") 2>/dev/null
+}
+
+# 候选 router 端点：先 ZENOH_ROUTER（router 可能跑在别的机器上），
+# 再兜底本机默认 7447。兼容 "tcp/host:port"、"host:port" 与 IPv6 方括号写法。
+zenoh_router_endpoints() {
+  local raw="${ZENOH_ROUTER:-}" ep hostport host port
+  while IFS= read -r ep; do
+    ep="${ep#"${ep%%[![:space:]]*}"}"   # 去首空白
+    ep="${ep%"${ep##*[![:space:]]}"}"   # 去尾空白
+    [[ -n "$ep" ]] || continue
+    hostport="${ep##*/}"                # 剥掉 scheme 前缀（tcp/udp/...）
+    [[ "$hostport" == *:* ]] || continue
+    host="${hostport%%:*}"
+    port="${hostport##*:}"
+    host="${host#[}"; host="${host%]}"   # 去 IPv6 方括号
+    [[ -n "$host" && -n "$port" ]] || continue
+    echo "${host} ${port}"
+  done < <(printf '%s' "$raw" | tr ',' '\n')
+  echo "127.0.0.1 7447"
+}
+
+zenoh_router_reachable() {
+  local host port
+  while read -r host port; do
+    if zenoh_tcp_reachable "$host" "$port"; then
+      return 0
+    fi
+  done < <(zenoh_router_endpoints)
+  return 1
+}
+
+# rmw_zenoh_cpp 没装时，ros2 run 会立刻报 "Package ... not found" 并退出 1。
+# 不预检的话这里表现为"启动了却 3 秒没就绪"，把原因指向错误的方向，还白等一轮。
+# ros2 pkg prefix 走 ament index，overlay（ros2_ws）里装的也能查到，约 0.2s。
+zenoh_pkg_installed() {
+  ros2 pkg prefix rmw_zenoh_cpp >/dev/null 2>&1
+}
+
+ensure_zenoh_router() {
+  # 只对 zenoh 中间件生效：fastrtps / cyclone 自带发现，不需要 router
+  case "${RMW_IMPLEMENTATION:-}" in
+    *zenoh*) ;;
+    *) return 0 ;;
+  esac
+
+  # 已有可达 router（用户手动起的，或 ZENOH_ROUTER 指向的远端）→ 保持安静
+  if zenoh_router_reachable; then
+    return 0
+  fi
+
+  if ! command -v ros2 >/dev/null 2>&1; then
+    echo ">>> ⚠️  未找到 ros2 命令，无法自动启动 Zenoh router（跨进程发现可能失败）"
+    return 0
+  fi
+  if ! zenoh_pkg_installed; then
+    echo ">>> ⚠️  未安装 rmw_zenoh_cpp，无法自动启动 Zenoh router（跨进程发现可能失败）"
+    echo ">>>     安装: sudo apt install ros-${ROS_DISTRO:-jazzy}-rmw-zenoh-cpp"
+    return 0
+  fi
+
+  echo ">>> 未检测到可达的 Zenoh router，正在自动启动 rmw_zenohd..."
+  local log="${TMPDIR:-/tmp}/fa_ros_zenohd.log"
+  # nohup + 后台：router 是共享守护进程，run.sh 退出后仍需存活，
+  # 否则每条命令都得另开一个终端手敲一遍。
+  nohup ros2 run rmw_zenoh_cpp rmw_zenohd >"$log" 2>&1 &
+  disown 2>/dev/null || true
+
+  # 注意：`ros2 run` 会自己 fork 出真正的 daemon（名字固定为 rmw_zenohd，
+  # 10 字符也不会被 comm 的 15 字符上限截断），所以 $! 不是最终 pid，
+  # 这里统一以 pgrep 的结果为准，打印出来的 pid 才能直接拿去 kill。
+  local i pid=""
+  for i in 1 2 3 4 5 6; do
+    # pgrep 无匹配时返回 1，管道里还套了 head；set -e/-o pipefail 下必须兜底
+    pid="$(pgrep -x rmw_zenohd 2>/dev/null | head -n1 || true)"
+    if [[ -n "$pid" ]] && zenoh_router_reachable; then
+      echo ">>> Zenoh router 已启动（pid=$pid，日志: $log，停止: kill $pid）"
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo ">>> ⚠️  Zenoh router 启动后 3 秒内未就绪（进程可能已退出），请查看日志: $log"
+  return 0
+}
+
+# 启动任何 ROS 节点前统一准备：Python 环境（顺带 source ROS2）+ Zenoh router。
+# 放在这一层的原因：ros2 命令要等 fa_env_activate 之后才在 PATH 里，
+# 而视频话题枚举（list_image_topics_menu）等子进程同样依赖 router。
+ensure_ros_env() {
+  ensure_python_env
+  ensure_zenoh_router
+}
+
 # =============================================================================
 # 可视化 — ros2-viser
 # =============================================================================
@@ -65,7 +172,7 @@ run_viser_launch() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_python_env
+  ensure_ros_env
   echo ">>> 启动 ros2-viser launch"
   python "$script_path"
 }
@@ -80,7 +187,7 @@ run_vr_launch() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_python_env
+  ensure_ros_env
   echo ">>> 启动 vr pose launch (Vuer/WebXR)"
   python "$script_path"
 }
@@ -287,7 +394,7 @@ run_vr_xrt_launch() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_python_env
+  ensure_ros_env
   if ! python -c "import xrobotoolkit_sdk" >/dev/null 2>&1; then
     echo "未检测到 xrobotoolkit_sdk。"
     echo "请先运行: ./init.sh install-xrobotoolkit"
@@ -350,7 +457,7 @@ run_interface_record() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_python_env
+  ensure_ros_env
   echo ">>> 启动 interface record_playback（录制模式）"
   python "$script_path" record
 }
@@ -362,7 +469,7 @@ run_interface_playback() {
     echo "未找到脚本: $script_path"
     exit 1
   fi
-  ensure_python_env
+  ensure_ros_env
   echo ">>> 启动 interface record_playback（回放模式）"
   if [[ -n "$json_file" ]]; then
     python "$script_path" playback --file "$json_file"
