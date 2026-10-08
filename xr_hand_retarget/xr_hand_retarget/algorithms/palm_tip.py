@@ -3071,8 +3071,8 @@ class PalmTipRetargeter:
             blended = attract_pinch(
                 blended,
                 feat,
-                self.calib,
                 self.workspace,
+                self.calib,
                 gate_thumb_j1=True,
                 decision=dec,
             )
