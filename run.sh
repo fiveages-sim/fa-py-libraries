@@ -232,6 +232,9 @@ prompt_vr_video_topic() {
   # 已由环境变量指定 → 不再打扰用户
   if [[ -n "${XR_IMAGE_TOPIC:-}" || -n "${VR_IMAGE_TOPIC:-}" ]]; then
     echo ">>> 视频传输话题已由环境变量指定: ${XR_IMAGE_TOPIC:-${VR_IMAGE_TOPIC}}"
+    if [[ -n "${XR_IMAGE_TOPIC_RIGHT:-}" || -n "${VR_IMAGE_TOPIC_RIGHT:-}" ]]; then
+      echo ">>> 右眼话题已由环境变量指定: ${XR_IMAGE_TOPIC_RIGHT:-${VR_IMAGE_TOPIC_RIGHT}}（双目沉浸式全景）"
+    fi
     return 0
   fi
   if [[ ! -t 0 ]]; then
@@ -250,49 +253,92 @@ prompt_vr_video_topic() {
   echo ">>> 正在检测可用图像话题..."
   list_image_topics_menu
   echo
+  echo ">>> 输入编号 / auto / 以 / 开头的话题名（留空=自动搜索）；"
+  echo ">>> 双目全景则填两个值、用空格隔开（第一个=左眼，第二个=右眼），例如: 1 2"
+  echo ">>> 两路也可以填同一个（单路相机 → 伪立体全景，两眼画面相同）"
+  echo
 
-  local choice="" topic=""
+  # 一次输入解析出左眼/右眼：两个值用空格隔开（第一个=左眼，第二个=右眼），
+  # 只给一个值即单目（平面）。
+  local -a choices=() topics=()
   local attempts=0
   while (( attempts < 3 )); do
     # EOF（Ctrl-D / 输入被重定向）视作放弃选择，跳过而非中断整个脚本
-    read -r -p ">>> 输入图像话题编号，或直接输入以 / 开头的话题名（留空=自动搜索）: " choice || return 0
-    choice="${choice#"${choice%%[![:space:]]*}"}"   # 去首空白
-    choice="${choice%"${choice##*[![:space:]]}"}"   # 去尾空白
+    read -r -p ">>> 选择图像话题: " -a choices || return 0
 
-    if [[ -z "$choice" ]]; then
-      topic="auto"
+    if (( ${#choices[@]} == 0 )); then
+      topics=("auto")
       break
     fi
-    # 纯数字 → 取清单里的第 N 项（用缓存清单，不重新枚举）
-    if [[ "$choice" =~ ^[0-9]+$ ]]; then
-      # 清单格式为 "  [N] /topic/name"
-      topic="$(printf '%s\n' "$IMAGE_TOPICS_MENU" \
-        | sed -n "s/^[[:space:]]*\[\(${choice}\)\][[:space:]]*\(.*\)$/\2/p" | head -n1)"
-      if [[ -n "$topic" ]]; then
+    if (( ${#choices[@]} > 2 )); then
+      echo ">>> 最多输入两个话题（左眼 右眼）: ${choices[*]}"
+      attempts=$((attempts + 1))
+      continue
+    fi
+
+    # 逐个解析：编号 → 取清单里的第 N 项（用缓存清单，不重新枚举）
+    local -a resolved=()
+    local invalid="" token name
+    for token in "${choices[@]}"; do
+      name=""
+      if [[ "$token" =~ ^[0-9]+$ ]]; then
+        # 清单格式为 "  [N] /topic/name"
+        name="$(printf '%s\n' "$IMAGE_TOPICS_MENU" \
+          | sed -n "s/^[[:space:]]*\[\(${token}\)\][[:space:]]*\(.*\)$/\2/p" | head -n1)"
+        if [[ -z "$name" ]]; then
+          invalid="无效编号: $token（请在上面的清单范围内，或直接输入 / 开头的话题名）"
+          break
+        fi
+      elif [[ "$token" == /* || "$token" == "auto" ]]; then
+        name="$token"
+      else
+        invalid="无效输入: $token（需为编号、auto，或以 / 开头的话题名）"
         break
       fi
-      echo ">>> 无效编号: $choice（请在上面的清单范围内，或直接输入 / 开头的话题名）"
-    elif [[ "$choice" == /* ]]; then
-      topic="$choice"
-      break
-    else
-      echo ">>> 无效输入: $choice（需为编号，或以 / 开头的话题名）"
+      resolved+=("$name")
+    done
+
+    if [[ -n "$invalid" ]]; then
+      echo ">>> $invalid"
+      attempts=$((attempts + 1))
+      continue
     fi
-    attempts=$((attempts + 1))
+    topics=("${resolved[@]}")
+    break
   done
 
-  if [[ -z "${topic:-}" ]]; then
+  if (( ${#topics[@]} == 0 )); then
     echo ">>> 多次输入无效，已跳过图像视频传输"
     return 0
   fi
 
-  export XR_IMAGE_TOPIC="$topic"
+  # 左右眼同名是合法配置：同一路图像同时喂两眼（伪立体全景），单路相机也能进沉浸式；
+  # auto auto 表示左右眼各自自动搜索（右眼会自动排除左眼话题）
+  if (( ${#topics[@]} == 2 )) && [[ "${topics[0]}" != "auto" ]] && [[ "${topics[0]}" == "${topics[1]}" ]]; then
+    echo ">>> 左右眼使用同一话题（${topics[0]}）：按伪立体全景处理（两眼内容相同）"
+  fi
+
+  export XR_IMAGE_TOPIC="${topics[0]}"
+  if (( ${#topics[@]} == 2 )); then
+    export XR_IMAGE_TOPIC_RIGHT="${topics[1]}"
+  fi
   if ! python -c "import av" >/dev/null 2>&1; then
     echo ">>> ⚠️  未检测到 PyAV（图像编码依赖），视频传输将无法推流"
     echo ">>>     请先运行: ./init.sh install-video"
   fi
-  echo ">>> 已启用图像视频传输: XR_IMAGE_TOPIC=$topic"
-  echo ">>> 头显: XRoboToolkit App → Remote Vision → 视频源选 ZEDMINI → Listen → 输入本机 IP"
+  echo ">>> 已启用图像视频传输: XR_IMAGE_TOPIC=${topics[0]}"
+  if [[ -n "${XR_IMAGE_TOPIC_RIGHT:-}" ]]; then
+    local eye_pair="左眼=$XR_IMAGE_TOPIC 右眼=$XR_IMAGE_TOPIC_RIGHT"
+    # 注意排除 auto：auto auto 表示两路各自自动搜索，不是同源
+    if [[ "$XR_IMAGE_TOPIC" != "auto" && "$XR_IMAGE_TOPIC_RIGHT" == "$XR_IMAGE_TOPIC" ]]; then
+      eye_pair="左右眼同源=$XR_IMAGE_TOPIC（伪立体）"
+    fi
+    echo ">>> 双目全景: $eye_pair（每眼适配默认填黑，可用 XR_IMAGE_EYE_FIT 调整）"
+    echo ">>> 头显: XRoboToolkit App → Remote Vision → 视频源选 PANORAMA_SBS_2560x640（需含全景能力的 App）"
+    echo ">>>       → Listen → 输入本机 IP；头显版本过低时会报错，并自动回退为平面左右分屏"
+  else
+    echo ">>> 头显: XRoboToolkit App → Remote Vision → 视频源选 ZEDMINI → Listen → 输入本机 IP"
+  fi
 }
 
 # -----------------------------------------------------------------------------
