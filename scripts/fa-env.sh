@@ -10,6 +10,7 @@ FA_ENV_BACKEND_OVERRIDE="${FA_ENV_BACKEND_OVERRIDE:-}"
 FA_ENV_CONDA_NAME=""
 FA_ENV_UV_VENV=""
 FA_ENV_ROS2_WORKSPACE=""
+# Deprecated: xrobotoolkit-sdk is installed from PyPI; pybind_dir is unused.
 FA_ENV_XRT_PYBIND_DIR=""
 
 fa_env_root_dir() {
@@ -220,7 +221,7 @@ fa_env_uv_venv_path() {
 }
 
 fa_env_xrt_pybind_path() {
-  # Prefer path relative to vr_pose_publisher; allow absolute override via config.
+  # Deprecated leftover for older configs; SDK install no longer clones this tree.
   local raw="${FA_ENV_XRT_PYBIND_DIR:-dependencies/XRoboToolkit-PC-Service-Pybind}"
   local root vr_dir
   root="$(fa_env_root_dir)"

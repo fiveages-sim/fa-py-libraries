@@ -106,10 +106,10 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 与默认的 Vuer/WebXR 并列，可用 Pico **XRoboToolkit App + PC Service** 作为输入，发布同一套 `/teleop/*` 话题（无 IK）。官方组件说明见 [XR-Robotics](https://github.com/XR-Robotics)。
 
 ```bash
-# 1) 安装官方 PC Service deb（按 Ubuntu 22.04/24.04 自动选择）
+# 1) 安装官方 PC Service deb（按 arch / Ubuntu 版本自动选择；arm64 可用 XRT_PCS_HEADLESS=1）
 ./init.sh install-xrobotoolkit-pc-service
 
-# 2) 安装 Python SDK（会先检测 PC Service；构建产物在 vr_pose_publisher/dependencies/）
+# 2) 安装 Python SDK（会先检测 PC Service；从 PyPI 安装 xrobotoolkit-sdk>=1.1.0）
 ./init.sh install-xrobotoolkit
 
 # 3) 启动 PC Service，再启动发布节点

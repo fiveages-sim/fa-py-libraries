@@ -33,8 +33,8 @@ print_usage() {
   echo "环境:"
   echo "  env            按 .fa-env.toml 的 backend 创建环境"
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
-  echo "  install-xrobotoolkit-pc-service  安装官方 XRoboToolkit-PC-Service deb（按 Ubuntu 版本下载）"
-  echo "  install-xrobotoolkit  安装 PC Service（若未装）+ xrobotoolkit_sdk（vr_pose_publisher/dependencies/）"
+  echo "  install-xrobotoolkit-pc-service  安装官方 XRoboToolkit-PC-Service deb（按 arch / Ubuntu 版本下载）"
+  echo "  install-xrobotoolkit  安装 PC Service（若未装）+ PyPI xrobotoolkit-sdk>=1.1.0"
   echo "  install-wuji-retargeting  安装官方 wuji-retargeting 到 third_party/，并钉死 numpy<2"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
@@ -582,7 +582,6 @@ install_xrobotoolkit_pc_service() {
 install_xrobotoolkit() {
   local vr_dir="$ROOT_DIR/vr_pose_publisher"
   local setup_script="$vr_dir/setup_xrobotoolkit.sh"
-  local pybind_dir
 
   fa_env_load_config "$ROOT_DIR"
   if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
@@ -602,15 +601,12 @@ install_xrobotoolkit() {
   # PC Service is required at runtime; install deb first when missing.
   install_xrobotoolkit_pc_service
 
-  pybind_dir="$(fa_env_xrt_pybind_path)"
-  echo ">>> 使用 backend=$FA_ENV_BACKEND 安装 XRoboToolkit Python SDK"
+  echo ">>> 使用 backend=$FA_ENV_BACKEND 安装 XRoboToolkit Python SDK（PyPI xrobotoolkit-sdk）"
   echo ">>> 安装脚本: $setup_script"
-  echo ">>> pybind 目录（相对 vr_pose_publisher）: $pybind_dir"
 
   (
     set +u
     fa_env_activate "$ROOT_DIR"
-    export XRT_PYBIND_DIR="$pybind_dir"
     bash "$setup_script"
   )
 }
