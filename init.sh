@@ -35,6 +35,7 @@ print_usage() {
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
   echo "  install-xrobotoolkit-pc-service  安装官方 XRoboToolkit-PC-Service deb（按 Ubuntu 版本下载）"
   echo "  install-xrobotoolkit  安装 PC Service（若未装）+ xrobotoolkit_sdk（vr_pose_publisher/dependencies/）"
+  echo "  install-wuji-retargeting  安装官方 wuji-retargeting 到 third_party/，并钉死 numpy<2"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
   echo "  install-miniconda  安装 Miniconda 到 ~/miniconda3 并关闭 base 自动激活"
@@ -388,13 +389,14 @@ install_projects() {
   local interface_dir="$ROOT_DIR/ros2_robot_interface"
   local viser_dir="$ROOT_DIR/ros2-viser"
   local vr_dir="$ROOT_DIR/vr_pose_publisher"
+  local hand_dir="$ROOT_DIR/xr_hand_retarget"
 
   fa_env_load_config "$ROOT_DIR"
   if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
     FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
   fi
 
-  for project_dir in "$interface_dir" "$viser_dir" "$vr_dir"; do
+  for project_dir in "$interface_dir" "$viser_dir" "$vr_dir" "$hand_dir"; do
     if [[ ! -d "$project_dir" ]]; then
       echo "未找到目录: $project_dir"
       echo "请先执行子模块初始化。"
@@ -402,11 +404,11 @@ install_projects() {
     fi
   done
 
-  echo ">>> 使用 backend=$FA_ENV_BACKEND，依次安装 interface -> viser -> vr"
+  echo ">>> 使用 backend=$FA_ENV_BACKEND，依次安装 interface -> viser -> vr -> hand"
   (
     set +u
     fa_env_activate "$ROOT_DIR"
-    fa_env_install_editable_projects "$interface_dir" "$viser_dir" "$vr_dir"
+    fa_env_install_editable_projects "$interface_dir" "$viser_dir" "$vr_dir" "$hand_dir"
   )
 
   if [[ -f "$vr_dir/cert.pem" && -f "$vr_dir/key.pem" ]]; then
@@ -417,6 +419,48 @@ install_projects() {
     echo ">>> 证书已生成: $vr_dir/cert.pem, $vr_dir/key.pem"
   fi
   echo ">>> 安装完成。"
+}
+
+# Official Wuji solver. ROS Jazzy Pinocchio is built against NumPy 1.x, and the
+# upstream package does not cap numpy, so pin it again after the editable install.
+WUJI_RETARGETING_GIT_URL="https://github.com/wuji-technology/wuji-retargeting.git"
+
+install_wuji_retargeting() {
+  local dest="$ROOT_DIR/third_party/wuji-retargeting"
+
+  fa_env_load_config "$ROOT_DIR"
+  if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
+    FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
+  fi
+
+  mkdir -p "$ROOT_DIR/third_party"
+  if [[ -d "$dest/.git" ]]; then
+    echo ">>> 已有 $dest，检出子模块"
+    git -C "$dest" submodule update --init --recursive
+  elif [[ -e "$dest" ]]; then
+    echo "已存在但不是 git 仓库: $dest"
+    exit 1
+  else
+    echo ">>> clone $WUJI_RETARGETING_GIT_URL"
+    git clone --recursive "$WUJI_RETARGETING_GIT_URL" "$dest"
+  fi
+
+  echo ">>> 使用 backend=$FA_ENV_BACKEND 安装 wuji-retargeting，然后钉死 numpy<2"
+  (
+    set +u
+    fa_env_activate "$ROOT_DIR"
+    case "$FA_ENV_BACKEND" in
+      uv)
+        uv pip install -e "$dest"
+        uv pip install 'numpy>=1.26,<2'
+        ;;
+      conda|*)
+        python -m pip install -e "$dest"
+        python -m pip install 'numpy>=1.26,<2'
+        ;;
+    esac
+  )
+  echo ">>> wuji-retargeting 安装完成。手型配置: configs/wuji_hand2.yaml"
 }
 
 # Official PC Service debs from https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases
@@ -768,7 +812,7 @@ interactive_menu() {
   echo
   echo "  [环境与安装]"
   echo "    3) 按当前 backend 创建环境"
-  echo "    4) 安装 interface / viser / vr"
+  echo "    4) 安装 interface / viser / vr / hand"
   echo "    5) 安装 XRoboToolkit PC Service（官方 deb）"
   echo "    6) 安装 XRoboToolkit SDK（VR XRT 后端，含 PC Service 检测）"
   echo
@@ -785,11 +829,12 @@ interactive_menu() {
   fi
   echo "   10) 配置 ROS2 工作空间"
   echo "   11) 切换 backend (conda/uv)"
+  echo "   12) 安装官方 wuji-retargeting（无极手 official）"
   echo
   echo "  [其他]"
   echo "    q) 退出"
   echo
-  read -r -p "输入选项 [1-11/q]: " choice
+  read -r -p "输入选项 [1-12/q]: " choice
 
   case "$choice" in
     1)
@@ -811,6 +856,9 @@ interactive_menu() {
       ;;
     6)
       install_xrobotoolkit
+      ;;
+    12)
+      install_wuji_retargeting
       ;;
     7)
       read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
@@ -876,6 +924,10 @@ main() {
       parse_install_backend_args "$@"
       install_xrobotoolkit
       ;;
+    install-wuji-retargeting)
+      parse_install_backend_args "$@"
+      install_wuji_retargeting
+      ;;
     install-xrobotoolkit-pc-service)
       install_xrobotoolkit_pc_service "$@"
       ;;
@@ -923,7 +975,7 @@ main() {
       print_usage
       ;;
     *)
-      echo "未知参数: $1"
+      echo "未知参数: ${cmd}"
       print_usage
       exit 1
       ;;

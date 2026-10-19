@@ -624,9 +624,7 @@ fa_env_activate() {
 }
 
 fa_env_install_editable_projects() {
-  local interface_dir="$1"
-  local viser_dir="$2"
-  local vr_dir="$3"
+  local project_dir
 
   case "$FA_ENV_BACKEND" in
     uv)
@@ -635,14 +633,14 @@ fa_env_install_editable_projects() {
         return 1
       fi
       echo ">>> [uv] rclpy / *-msgs 由系统 ROS2 提供，不从 PyPI 解析"
-      fa_env_uv_pip_install_editable "$interface_dir"
-      fa_env_uv_pip_install_editable "$viser_dir"
-      fa_env_uv_pip_install_editable "$vr_dir"
+      for project_dir in "$@"; do
+        fa_env_uv_pip_install_editable "$project_dir"
+      done
       ;;
     conda|*)
-      python -m pip install -e "$interface_dir"
-      python -m pip install -e "$viser_dir"
-      python -m pip install -e "$vr_dir"
+      for project_dir in "$@"; do
+        python -m pip install -e "$project_dir"
+      done
       ;;
   esac
 }
