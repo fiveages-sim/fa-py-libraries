@@ -11,6 +11,7 @@ from std_msgs.msg import Float64MultiArray, Int32
 
 from xr_hand_retarget.config import HandRuntimeConfig
 from xr_hand_retarget.local_profile import HandPlan, SideSpec, format_resolved, print_plan
+from xr_hand_retarget.mirror_latch import load_mirror, save_mirror
 from xr_hand_retarget.pipeline import (
     SidePipeline,
     StreamMoveJSession,
@@ -62,7 +63,8 @@ class DualHandRetargetNode(Node):
         self._last_heartbeat = 0.0
         self._hold_heartbeat_dt = 0.2
         # Match VRInputHandler case 7: left optical → right hand controller and vice versa.
-        self._mirror = False
+        # Restore when the controller process is still the one left in mirror mode.
+        self._mirror = load_mirror()
 
         self._left = SidePipeline("left", cfg, retargeting_type, xrt=xrt)
         self._right = SidePipeline("right", right_cfg, right_retargeting, xrt=xrt)
@@ -122,6 +124,10 @@ class DualHandRetargetNode(Node):
             f"right={self._right_topic} ({right_cfg.dof})"
             f"{'' if self._use_timer else ' drive=ee-frame'}"
         )
+        if self._mirror:
+            self.get_logger().warn(
+                "Hand mirror restored ON (same controller still in mirror mode)"
+            )
 
     def _on_fsm(self, msg: Int32) -> None:
         prev = self._fsm
@@ -159,6 +165,7 @@ class DualHandRetargetNode(Node):
         if int(msg.data) != _EVENT_MIRROR:
             return
         self._mirror = not self._mirror
+        save_mirror(self._mirror)
         self.get_logger().warn(
             f"Hand mirror={'ON (L optical→R ctrl, R→L)' if self._mirror else 'OFF'}"
         )
