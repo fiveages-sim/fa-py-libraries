@@ -1,0 +1,45 @@
+# Layer 1 — this machine (copy to local.yaml; gitignored).
+#
+# VR 手柄 / 光学腕：vr_pose_publisher/configs/xrt_teleop.yaml
+# 本文件：选手型 + 可选发布安全（键名对齐 teleop_ws launch）。
+#
+# 手型 → 算法（method 可省略；写错会被忽略并告警）：
+#   xhand1     → vector
+#   o6|l6|o7   → curl
+#   wuji       → official
+
+hands:
+  source: xrt          # xrt（默认）| replay | …
+  type: xhand1         # xhand1 | wuji | o6 | l6 | o7
+  # method: vector     # 可省略
+  # user: pico         # Linker → linker.user；Wuji → users/<id>.yaml
+
+# Per-side（可选）:
+# left:
+#   type: xhand1
+# right:
+#   type: o7
+
+# ---------------------------------------------------------------------------
+# 发布路径安全 — 键名与 teleop_ws dexcap_hand_retarget.launch.py 相同
+# （也可写在 hands.command / 各手型 yaml 的 safety.command；此处覆盖默认）
+# ---------------------------------------------------------------------------
+# command:
+#   publish_command: true
+#   max_velocity: 6.0          # rad/s；xhand1=6 / linker=4 / wuji=1.5
+#   filter_cutoff_hz: 8.0
+#   command_epsilon: 0.001
+#   target_timeout: 0.25
+#   allowed_fsm_states: [3, 4] # OCS2, MOVEJ
+#   # enabled: false           # 关掉整层 FSM+LPF+限速
+
+# XHand1 soft self-collision（可选；默认开）
+# safety:
+#   soft_collision: true       # false 关闭
+
+# ---------------------------------------------------------------------------
+# 跑：
+#   Linker / XHand1：./run.sh vr-xrt wrist
+#   临时换手：FA_HAND=o6 ./run.sh vr-xrt wrist
+#   Wuji：python -m xr_hand_retarget --config xr_hand_retarget/configs/wuji_hand2.yaml --side right
+# ---------------------------------------------------------------------------
