@@ -1,0 +1,77 @@
+# Expandable human-pose handbook. User calibrates poses on the Wuji-21
+# standard hand (MediaPipe xyz), not robot q and not Hand-2 20-DOF.
+# Layouts subscribe to a subset. Extra poses (index_abd, …) are ignored
+# by hands without that joint.
+#
+# Pinch attract / workspace live on T_robot: standard-21 → device.
+# Optical pinch/fist: short-window median. Fist/open store pack_h/r
+# (palm-normal height and in-plane nest radius). Mapping: curl→pinch_q,
+# pack→URDF hi. Next: lo/hi decision regions.
+
+schema: fa_hand_pose_handbook.v1
+
+poses:
+  open:
+    group: core
+    hint: 开掌：四指自然张开；拇指垂直
+    features: [finger_curl, thumb_curl, thumb_az, thumb_h, pack_h, pack_r]
+  together:
+    group: core
+    hint: 合掌：四指并拢，拇指垂直于四指
+    features: [finger_curl, thumb_curl, thumb_az, thumb_h, pack_h, pack_r]
+  fist:
+    group: core
+    hint: 握拳：四指握紧，大拇指收在掌中（掌侧由 thumb_along 标定）
+    features: [finger_curl, thumb_curl, pack_h, pack_r]
+  good:
+    group: core
+    hint: 点赞：四指握紧程度与 fist 相同；拇指伸出
+    features: [finger_curl, thumb_curl, thumb_az]
+  thumb_along:
+    group: core
+    hint: 四指伸直，拇指伸直并与四指同向、贴掌外侧
+    features: [thumb_az, nest_lat]
+  thumb_flex:
+    group: extra
+    hint: 四指展开，拇指充分弯曲，不要横移
+    features: [thumb_curl]
+    hands: [xhand1, wuji]
+  thumb_to_pinky:
+    group: extra
+    hint: 对掌：其余指伸直，拇指扫到掌面靠小指一侧
+    features: [thumb_az, thumb_lat]
+    hands: [xhand1, wuji]
+  pinch_index:
+    group: pinch
+    hint: 食指捏合：拇指与食指指腹对上即可，不要握死；其余指不管。四次捏合尽量同一水平线（近远一致）
+    features: [thumb_az, thumb_curl, finger_curl, pinch_d, nest_lat, slot_t]
+  pinch_middle:
+    group: pinch
+    hint: 中指捏合：拇指与中指指腹对上，不要收到握拳；其余指不管。与其它 pinch 同一水平线
+    features: [thumb_az, thumb_curl, finger_curl, pinch_d, nest_lat, slot_t]
+  pinch_ring:
+    group: pinch
+    hint: 无名指捏合：拇指与无名指指腹对上；其余指不管。与其它 pinch 同一水平线
+    features: [thumb_az, thumb_curl, finger_curl, pinch_d, nest_lat, slot_t]
+  pinch_pinky:
+    group: pinch
+    hint: 小指捏合：拇指与小指指腹对上；其余指不管。与其它 pinch 同一水平线
+    features: [thumb_az, thumb_curl, finger_curl, pinch_d, nest_lat, slot_t]
+  index_together:
+    group: extra
+    hint: 五指并拢，食指贴中指，不要外展（Pico 追踪好时采）。XHand1 curl：对应 index_joint1=0
+    features: [index_abd]
+    hands: [xhand1]
+  index_abd:
+    group: extra
+    hint: 其余指并拢，食指向外打开到极限（Pico 追踪好时）。XHand1 curl：对应正极限
+    features: [index_abd]
+    hands: [xhand1, wuji]
+
+# Which poses a layout actually captures. Extra poses can be appended later.
+layouts:
+  o6: [open, together, fist, good, thumb_along, pinch_index, pinch_middle, pinch_ring, pinch_pinky]
+  l6: [open, together, fist, good, thumb_along, pinch_index, pinch_middle, pinch_ring, pinch_pinky]
+  o7: [open, together, fist, good, thumb_along, pinch_index, pinch_middle, pinch_ring, pinch_pinky]
+  xhand1: [open, fist, thumb_to_pinky, pinch_index, pinch_middle, pinch_ring, pinch_pinky, index_together, index_abd]
+  wuji: [open, fist, thumb_flex, thumb_to_pinky, pinch_index, pinch_middle, pinch_ring, pinch_pinky]

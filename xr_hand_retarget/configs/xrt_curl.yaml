@@ -1,0 +1,63 @@
+# 仅 curl 的精简入口（可选）。
+# 默认遥操已改用 configs/xhand1.yaml（见 configs/local_xr.sh）。
+# 若要用本文件: FA_HAND_CONFIG=.../xrt_curl.yaml ./run.sh vr-xrt wrist
+
+backend: xhand1
+
+hand:
+  id: xhand1
+  dof: 12
+  joint_names:
+    - thumb_joint1
+    - thumb_joint2
+    - thumb_joint3
+    - index_joint1
+    - index_joint2
+    - index_joint3
+    - middle_joint1
+    - middle_joint2
+    - ring_joint1
+    - ring_joint2
+    - pinky_joint1
+    - pinky_joint2
+  limits:
+    - [0.0, 1.832]
+    - [-0.698, 1.57]
+    - [0.0, 1.57]
+    - [-0.174, 0.174]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+    - [0.0, 1.919]
+
+retargeting:
+  type: curl
+  curl:
+    calib: calib/xrt_default.yaml
+    output_alpha: 0.85
+    pinch_target_link: pip
+
+ros:
+  controller: hand_joint_controller
+  topic_suffix: target_joint_position
+  fsm_topic: /fsm_command
+  auto_movej: false
+
+safety:
+  alpha: 0.90
+  max_delta_rad: 0.0
+  hold_on_inactive: true
+  hold_on_zero_pose: true
+  soft_collision: false
+  collision:
+    thumb_index_guard: true
+    ease: 0.88
+  motion:
+    enabled: false
+
+publish:
+  rate_hz: 50.0

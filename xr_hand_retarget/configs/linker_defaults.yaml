@@ -1,0 +1,75 @@
+# LinkerHand family defaults (O6 / L6 / O7).
+# Indexed from configs/{o6,l6,o7}.yaml → linker.defaults
+# Workspace numbers and per-hand semantics live in configs/hands/*.yaml
+# Human curl lives in configs/users/*.yaml — not here.
+
+retargeting:
+  type: curl
+  curl:
+    output_alpha: 0.85
+    thumb_alpha: 0.55   # 拇指 EMA 略慢，抑制 MP21/光学抖动（四指仍用 output_alpha）
+    closed_reach_t: 0.88   # 人手未到标定握拳极值时，机器人仍可握满
+    source_side: left
+    mirror_az: negate
+    attract:
+      near: 0.22
+      far: 0.45
+      slot_near: 0.28
+      slot_far: 1.00
+
+ros:
+  controller: hand_joint_controller
+  topic_suffix: target_joint_position
+  fsm_topic: /fsm_command
+  fsm_command: 4
+  auto_movej: true
+  stream_movej: true
+
+safety:
+  enabled: false
+  hold_on_inactive: true
+  hold_on_zero_pose: true
+  min_palm_area_m2: 1.0e-5
+  unlock_frames: 5
+  position:
+    enabled: true
+    margin_rad: 0.0
+    fk:
+      enabled: true
+      rake_clearance_m: 0.018
+      # Near pinch corridor lower edge (1.0−0.25); avoid tip–tip block on 侧掌→对掌 sweep.
+      pack_j2_min: 0.75
+      pack_finger_min: 0.55
+      # Thumb-outside fist (robot q): open j2 before fingers deepen.
+      along_j2: 0.35
+      fist_finger_min: 0.90
+      hold_fingers_until_thumb_out: true
+      # Hard pack only in fist_outside mode.
+      pinch_clearance_m: 0.006
+      pack_clearance_m: 0.020
+      activation_m: 0.010
+      project: thumb_j2
+      thumb_palm_m: 0.005
+      # Pad sphere radius; h = d - 2r - clearance.
+      sphere_radius_m: 0.006
+      # Joint-space safe grid (pad spheres offline). When enabled, replaces
+      # fist_inside gate + FK axis project. Build: python tools/build_o6_cspace.py
+      # weights = move preference (higher → change that joint first).
+      cspace:
+        enabled: false
+        table: assets/cspace/o6_{side}.npz
+        weights: [4.0, 10.0, 0.2, 0.2, 0.2, 0.2]
+  velocity:
+    enabled: false
+    use_urdf: true
+    scale: 4.0
+    limit_rad_s: 0.0
+  acceleration:
+    enabled: false
+    limit_rad_s2: 40.0
+  # No FCL. Cartesian safety is FK link/pad spheres only.
+  mesh:
+    enabled: false
+
+publish:
+  rate_hz: 50.0

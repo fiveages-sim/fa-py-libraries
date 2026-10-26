@@ -1,0 +1,36 @@
+# LinkerHand O6 — family index (layer 2).
+# Details: linker.defaults / workspace / user (like wuji.official_yaml).
+# Recapture human (unified session → curl + mp_curl):
+#   python -m xr_hand_retarget.calibrate --config <this file>
+# Re-export only: ... --export-only
+# Run: FA_HAND=o6 ./run.sh vr-xrt wrist
+# mp_curl: FA_HAND=o6 FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist
+#   一次会话写入 calib/linker_session.yaml + o6/l6/o7.yaml + mp_curl.yaml
+
+backend: linker
+layout: o6
+
+hand:
+  id: linkerhand_o6
+  dof: 6
+  joint_names:
+    - thumb_joint1
+    - thumb_joint2
+    - index_joint
+    - middle_joint
+    - ring_joint
+    - pinky_joint
+
+linker:
+  defaults: linker_defaults.yaml
+  workspace: hands/o6.yaml
+  user: calib/o6.yaml          # 这次采集会话；不要和 O7 的 users/pico.yaml 混用
+  # test: tests/attract_off.yaml
+
+retargeting:
+  type: curl
+  curl:
+    model: o6
+    source_side: left
+    mirror_az: negate
+    output_alpha: 0.85

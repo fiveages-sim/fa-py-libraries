@@ -1,0 +1,76 @@
+# Wuji Hand 2 — index (layer 2).
+# T_robot: hands/wuji.yaml | curl calib: calib/wuji_hand2.yaml (user-kind)
+# Official yaml: configs/official/*
+#
+# FA_HAND=wuji ./run.sh vr-xrt wrist
+# or: python -m xr_hand_retarget --config xr_hand_retarget/configs/wuji_hand2.yaml --side right
+
+backend: wuji
+
+hand:
+  id: wuji_hand2
+  dof: 20
+  joint_names:
+    - thumb_cmc_flex
+    - thumb_cmc_abd
+    - thumb_mcp
+    - thumb_ip
+    - index_finger_mcp_flex
+    - index_finger_mcp_abd
+    - index_finger_pip
+    - index_finger_dip
+    - middle_finger_mcp_flex
+    - middle_finger_mcp_abd
+    - middle_finger_pip
+    - middle_finger_dip
+    - ring_mcp_flex
+    - ring_mcp_abd
+    - ring_pip
+    - ring_dip
+    - pinky_mcp_flex
+    - pinky_mcp_abd
+    - pinky_pip
+    - pinky_dip
+
+retargeting:
+  # curl | official
+  type: official
+  curl:
+    calib: calib/wuji_hand2.yaml
+    output_alpha: 0.85
+    pinch_target_link: pip
+    pinch_axis: 0
+    opposition_index: 0
+    hold_abd: true
+    dip_mode: couple
+    dip_couple_ratio: 0.65
+
+wuji:
+  robot: hands/wuji.yaml          # T_robot overlay (segment_scaling, weights, …)
+  # user: users/<id>.yaml         # optional T_person (person.segment_scaling)
+  official_yaml:
+    left: official/adaptive_analytical_wuji_hand_2_left.yaml
+    right: official/adaptive_analytical_wuji_hand_2_right.yaml
+  profile: as_is
+  qpos_remap: name
+  # Inline overlay still merged last (compat). Prefer hands/wuji.yaml for new knobs.
+  overlay: {}
+
+ros:
+  controller: hand_joint_controller
+  topic_suffix: target_joint_position
+  fsm_topic: /fsm_command
+  fsm_command: 4
+  auto_movej: true
+  stream_movej: true
+
+safety:
+  hold_on_inactive: true
+  hold_on_zero_pose: true
+  clamp_urdf: true
+  max_joint_vel_rad_s: 0.0
+  min_palm_area_m2: 1.0e-5
+  unlock_frames: 5
+
+publish:
+  rate_hz: 50.0

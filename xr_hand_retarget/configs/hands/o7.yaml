@@ -1,0 +1,77 @@
+# O7 robot workspace + semantics (RViz 垫接触 q).
+# Human curl (PalmTip): linker.user on the index yaml (users/pico.yaml / calib/o6.yaml).
+#
+# method: curl     日常 PalmTip。四指 pack→满行程；j2 垫带；j3 跟 az。
+# method: mp_curl  VR26→MP21→curl；共用 calib/mp_curl.yaml；j1 折线用本文件 pinch_q + fist_envelope.j1_roof
+# method: veccurl  试验 tip−nest 三标量
+# method: nest     O7 回退 curl
+
+retargeting:
+  curl:
+    output_alpha: 0.85
+    thumb_alpha: 0.70
+    finger_alpha: 0.88
+    neighbor_soft: 0.12
+    workspace:
+      thumb_joint2:
+        index: 1.2
+        middle: 1.3
+        along: 0.35           # j2≤此：侧掌，j1 走满 curl（五指同向）
+        along_fade: 0.15
+        pinch_halfwidth: 0.25 # 垫带走廊；槽内才允许接触 j1
+      closed_reach_t: 0.85
+      pinch_knot_max_t: 0.92
+      thumb_joint3:
+        index: 0.18
+        middle: 0.36
+        ring: 0.50
+        pinky: 0.80
+      fist_j1: 0.34           # 拳心/垫接触屋顶（fist_envelope），非侧掌 j1 上限
+      nest:
+        r_near: 0.32      # 近巢 → j2 垫带
+        r_far: 1.15       # 远（掌侧）→ j2 = 0
+        curl_span: 0.08
+        lat_along: 0.42
+        lat_opp: -0.02
+      pinch_q:
+        index:
+          thumb_joint1: 0.3
+          thumb_joint3: 0.18
+          index_joint: 0.58
+        middle:
+          thumb_joint1: 0.3
+          thumb_joint3: 0.36
+          middle_joint: 0.61
+        ring:
+          thumb_joint1: 0.3
+          thumb_joint3: 0.52
+          ring_joint: 0.60
+        pinky:
+          thumb_joint1: 0.3
+          thumb_joint3: 0.8
+          pinky_joint: 0.62
+    attract:
+      enabled: true
+    pinch:
+      ceiling_enabled: true
+      ceiling_margin_rad: 0.0
+      fk_project_enabled: true
+      fk_project_clearance_m: null   # null → 6mm (linker_defaults safety.fk)
+    j2_lock:
+      button: a
+      lo: 1.2
+      hi: 1.3
+    fist_envelope:
+      enabled: true
+      fingers: [index, middle]
+      finger_t: 0.92
+      j2_split: 1.2
+      j1_roof: 0.34
+
+safety:
+  position:
+    fk:
+      pinch_j2:
+        index: 1.2
+        middle: 1.3
+        halfwidth: 0.25

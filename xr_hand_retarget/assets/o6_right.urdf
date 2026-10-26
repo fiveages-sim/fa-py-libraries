@@ -1,0 +1,176 @@
+<?xml version="1.0"?>
+<!-- Kinematics-only LinkerHand O6 (no meshes). From linkerhand_description xacro/o6.xacro. -->
+<robot name="linkerhand_o6_right">
+  <link name="hand_base">
+			</link>
+  <link name="eef" />
+  <joint name="eef_joint" type="fixed">
+    <parent link="hand_base" />
+    <child link="eef" />
+    <origin xyz="0.02 0. 0.07" />
+  </joint>
+  <link name="thumb_metacarpals_base2">
+			</link>
+  <joint name="thumb_joint2" type="revolute">
+    <origin xyz="0.011508 0.022975 0.032794" />
+    <parent link="hand_base" />
+    <child link="thumb_metacarpals_base2" />
+    <axis xyz="0 0 -1" />
+    <limit lower="0" upper="1.36" effort="100" velocity="1" />
+  </joint>
+  <link name="thumb_metacarpals">
+			</link>
+  <joint name="thumb_joint1" type="revolute">
+    <origin xyz="0.0061649 0.010678 -0.004891" rpy="0 -1.1529 -2.0944" />
+    <parent link="thumb_metacarpals_base2" />
+    <child link="thumb_metacarpals" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="0.58" effort="100" velocity="1" />
+  </joint>
+  <link name="thumb_distal">
+			</link>
+  <joint name="thumb_dip" type="revolute">
+    <origin xyz="0.0037776 0 0.045368" />
+    <parent link="thumb_metacarpals" />
+    <child link="thumb_distal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.08" effort="100" velocity="1" />
+    <mimic joint="thumb_joint1" multiplier="1.86" offset="0" />
+  </joint>
+  <link name="index_proximal">
+			</link>
+  <joint name="index_joint" type="revolute">
+    <origin xyz="0.0024758 0.02419 0.098779" rpy="-0.05236 0 0" />
+    <parent link="hand_base" />
+    <child link="index_proximal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.60" effort="100" velocity="1" />
+  </joint>
+  <link name="index_distal">
+			</link>
+  <joint name="index_dip" type="revolute">
+    <origin xyz="-0.0052516 0 0.036625" />
+    <parent link="index_proximal" />
+    <child link="index_distal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.43" effort="100" velocity="1" />
+    <mimic joint="index_joint" multiplier="0.89" offset="0" />
+  </joint>
+  <link name="middle_proximal">
+			</link>
+  <joint name="middle_joint" type="revolute">
+    <origin xyz="0.00052576 0.00634 0.1027" />
+    <parent link="hand_base" />
+    <child link="middle_proximal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.60" effort="100" velocity="1" />
+  </joint>
+  <link name="middle_distal">
+			</link>
+  <joint name="middle_dip" type="revolute">
+    <origin xyz="-0.0052516 0 0.036625" />
+    <parent link="middle_proximal" />
+    <child link="middle_distal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.43" effort="100" velocity="1" />
+    <mimic joint="middle_joint" multiplier="0.89" offset="0" />
+  </joint>
+  <link name="ring_proximal">
+			</link>
+  <joint name="ring_joint" type="revolute">
+    <origin xyz="0.0010258 -0.011135 0.098767" rpy="0.05236 0 0" />
+    <parent link="hand_base" />
+    <child link="ring_proximal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.60" effort="100" velocity="1" />
+  </joint>
+  <link name="ring_distal">
+			</link>
+  <joint name="ring_dip" type="revolute">
+    <origin xyz="-0.0052516 0 0.036625" />
+    <parent link="ring_proximal" />
+    <child link="ring_distal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.43" effort="100" velocity="1" />
+    <mimic joint="ring_joint" multiplier="0.89" offset="0" />
+  </joint>
+  <link name="pinky_proximal">
+			</link>
+  <joint name="pinky_joint" type="revolute">
+    <origin xyz="0.0024758 -0.028372 0.092741" rpy="0.087266 0 0" />
+    <parent link="hand_base" />
+    <child link="pinky_proximal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.60" effort="100" velocity="1" />
+  </joint>
+  <link name="pinky_distal">
+			</link>
+  <joint name="pinky_dip" type="revolute">
+    <origin xyz="-0.0052516 0 0.036625" />
+    <parent link="pinky_proximal" />
+    <child link="pinky_distal" />
+    <axis xyz="0 1 0" />
+    <limit lower="0" upper="1.43" effort="100" velocity="1" />
+    <mimic joint="pinky_joint" multiplier="0.89" offset="0" />
+  </joint>
+  <link name="thumb_tip" />
+  <joint name="thumb_tip_fixed" type="fixed">
+    <origin xyz="0 0 0.022" rpy="0 0 0" />
+    <parent link="thumb_distal" />
+    <child link="thumb_tip" />
+  </joint>
+  <link name="index_tip" />
+  <joint name="index_tip_fixed" type="fixed">
+    <origin xyz="0 0 0.022" rpy="0 0 0" />
+    <parent link="index_distal" />
+    <child link="index_tip" />
+  </joint>
+  <link name="middle_tip" />
+  <joint name="middle_tip_fixed" type="fixed">
+    <origin xyz="0 0 0.022" rpy="0 0 0" />
+    <parent link="middle_distal" />
+    <child link="middle_tip" />
+  </joint>
+  <link name="ring_tip" />
+  <joint name="ring_tip_fixed" type="fixed">
+    <origin xyz="0 0 0.022" rpy="0 0 0" />
+    <parent link="ring_distal" />
+    <child link="ring_tip" />
+  </joint>
+  <link name="pinky_tip" />
+  <joint name="pinky_tip_fixed" type="fixed">
+    <origin xyz="0 0 0.022" rpy="0 0 0" />
+    <parent link="pinky_distal" />
+    <child link="pinky_tip" />
+  </joint>
+  <link name="thumb_pad" />
+  <joint name="thumb_pad_fixed" type="fixed">
+    <origin xyz="0.008 0 0.014" rpy="0 0 0" />
+    <parent link="thumb_distal" />
+    <child link="thumb_pad" />
+  </joint>
+  <link name="index_pad" />
+  <joint name="index_pad_fixed" type="fixed">
+    <origin xyz="0.008 0 0.014" rpy="0 0 0" />
+    <parent link="index_distal" />
+    <child link="index_pad" />
+  </joint>
+  <link name="middle_pad" />
+  <joint name="middle_pad_fixed" type="fixed">
+    <origin xyz="0.008 0 0.014" rpy="0 0 0" />
+    <parent link="middle_distal" />
+    <child link="middle_pad" />
+  </joint>
+  <link name="ring_pad" />
+  <joint name="ring_pad_fixed" type="fixed">
+    <origin xyz="0.008 0 0.014" rpy="0 0 0" />
+    <parent link="ring_distal" />
+    <child link="ring_pad" />
+  </joint>
+  <link name="pinky_pad" />
+  <joint name="pinky_pad_fixed" type="fixed">
+    <origin xyz="0.008 0 0.014" rpy="0 0 0" />
+    <parent link="pinky_distal" />
+    <child link="pinky_pad" />
+  </joint>
+</robot>
