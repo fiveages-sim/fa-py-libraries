@@ -23,7 +23,6 @@ linker:
   defaults: linker_defaults.yaml
   workspace: hands/o7.yaml
   user: calib/o7.yaml          # 与 O6/L6 同一次统一会话导出
-  # test: tests/attract_off.yaml
 
 retargeting:
   type: curl

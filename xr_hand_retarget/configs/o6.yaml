@@ -20,7 +20,6 @@ linker:
   defaults: linker_defaults.yaml
   workspace: hands/o6.yaml
   user: calib/o6.yaml          # 这次采集会话；不要和 O7 的 users/pico.yaml 混用
-  # test: tests/attract_off.yaml
 
 retargeting:
   type: curl

@@ -17,3 +17,6 @@ xr_bags/
 
 __pycache__/
 *.py[cod]
+
+# Local hand retarget test overlays (not shipped)
+xr_hand_retarget/configs/tests/
