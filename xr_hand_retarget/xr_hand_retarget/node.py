@@ -25,7 +25,8 @@ def _parse_args(argv=None):
     p.add_argument(
         "--retargeting",
         default=None,
-        help="Override yaml type: XHand1 curl|thumb_ik|vector|dexpilot; Wuji curl|official; O6/L6 curl|nest",
+        help="Ignored if it disagrees with the fixed per-hand method "
+        "(xhand1=vector, o6/l6/o7=curl, wuji=official)",
     )
     p.add_argument("--rate", type=float, default=None, help="Override publish rate Hz")
     p.add_argument(

@@ -1,11 +1,11 @@
 # Local XR / dexterous-hand config for ./run.sh vr-xrt
 # Sourced by run.sh after ROOT_DIR is set.
 #
-# 换手：改 configs/local.yaml 的 hands.type / hands.method
+# 换手：改 configs/local.yaml 的 hands.type（method 按手型锁定，可省略）
 # 优先级：环境变量 FA_HAND / FA_HAND_CONFIG / FA_HAND_RETARGETING > local.yaml
-#
-# XHand1 method 见 local.yaml.example（dexpilot 捏合最好；curl 要采食指侧角）
-# LinkerHand 重采：停 vr-xrt 后 python -m xr_hand_retarget.calibrate --config $FA_HAND_CONFIG
+# 手型→算法：xhand1=vector | o6/l6/o7=curl | wuji=official
+# 发布安全 / soft_collision：见 configs/local.yaml.example 与 docs/user/SWITCH.md
+# 重采：停 vr-xrt 后 python -m xr_hand_retarget.calibrate --config $FA_HAND_CONFIG
 
 FA_XRT_TELEOP_CONFIG="${FA_XRT_TELEOP_CONFIG:-$ROOT_DIR/vr_pose_publisher/configs/xrt_teleop.yaml}"
 

@@ -1023,6 +1023,23 @@ class VectorRetargeter:
         else:
             q_out = q_opt
 
+        # Index j1 only when middle finger is curled (gate scalar).
+        if index_abduction is not None:
+            from xr_hand_retarget.algorithms.remap import apply_index_abd_middle_gate
+
+            chain_scale = 1.0
+            if finger_chain is not None:
+                chain_scale = float(getattr(finger_chain, "scale", 1.0) or 1.0)
+            if flexion_scale != 1.0:
+                chain_scale *= float(flexion_scale)
+            q_out = apply_index_abd_middle_gate(
+                q_out,
+                joints26,
+                index_abduction,
+                chain_scale=chain_scale,
+            )
+            q_out = np.clip(q_out, lo, hi)
+
         self._q_prev = q_out.copy()
         return q_out
 

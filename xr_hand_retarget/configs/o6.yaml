@@ -1,11 +1,6 @@
-# LinkerHand O6 — family index (layer 2).
-# Details: linker.defaults / workspace / user (like wuji.official_yaml).
-# Recapture human (unified session → curl + mp_curl):
-#   python -m xr_hand_retarget.calibrate --config <this file>
-# Re-export only: ... --export-only
+# LinkerHand O6 — family index (layer 2). Method fixed: curl.
+# Recapture: python -m xr_hand_retarget.calibrate --config <this file>
 # Run: FA_HAND=o6 ./run.sh vr-xrt wrist
-# mp_curl: FA_HAND=o6 FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist
-#   一次会话写入 calib/linker_session.yaml + o6/l6/o7.yaml + mp_curl.yaml
 
 backend: linker
 layout: o6

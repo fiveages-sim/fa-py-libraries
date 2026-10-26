@@ -254,6 +254,24 @@ def format_resolved(left: SidePlan | SideSpec, right: SidePlan | SideSpec) -> st
     return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
 
 
+def _apply_local_overrides(cfg: HandRuntimeConfig, raw: dict[str, Any]) -> None:
+    """Apply teleop_ws-style operator knobs from configs/local.yaml."""
+    from xr_hand_retarget.control.command_safety import (
+        extract_local_command_block,
+        merge_command_override,
+    )
+
+    cmd_block = extract_local_command_block(raw)
+    if cmd_block:
+        cfg.command = merge_command_override(
+            cfg.command, cmd_block, backend=cfg.backend
+        )
+
+    safety = raw.get("safety") if isinstance(raw.get("safety"), dict) else {}
+    if "soft_collision" in safety and cfg.xhand1 is not None:
+        cfg.xhand1.soft_collision = bool(safety["soft_collision"])
+
+
 def _plan_from_specs(
     left: SideSpec,
     right: SideSpec,
@@ -261,12 +279,13 @@ def _plan_from_specs(
     source: Path | None,
     user: str | None = None,
     input_source: str = "xrt",
+    local_raw: dict[str, Any] | None = None,
 ) -> HandPlan:
     def _one(spec: SideSpec) -> SidePlan:
-        return SidePlan(
-            spec=spec,
-            cfg=load_runtime_config(spec.yaml_path(), user=user or None),
-        )
+        cfg = load_runtime_config(spec.yaml_path(), user=user or None)
+        if local_raw:
+            _apply_local_overrides(cfg, local_raw)
+        return SidePlan(spec=spec, cfg=cfg)
 
     return HandPlan(
         left=_one(left),
@@ -322,6 +341,7 @@ def load_hand_plan(
             source=found,
             user=_lookup_user(data) or None,
             input_source=_lookup_source(data),
+            local_raw=data,
         )
 
     return plan_from_single_yaml(None, retargeting=retargeting)

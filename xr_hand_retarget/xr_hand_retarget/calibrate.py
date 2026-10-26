@@ -1,9 +1,8 @@
 """Calibration entry: XHand1 curl, Wuji official tools, or LinkerHand curl.
 
-LinkerHand O6/L6/O7: one VR session captures PalmTip + MP21 features, then
-exports ``calib/o6.yaml``, ``calib/l6.yaml``, ``calib/o7.yaml`` (curl) and
-``calib/mp_curl.yaml``. Master session: ``calib/linker_session.yaml``.
-Robot q (pinch_q, j2, j3) stays in configs/hands/{hand}.yaml.
+LinkerHand O6/L6/O7: one VR session captures PalmTip features, then exports
+``calib/o6.yaml``, ``calib/l6.yaml``, ``calib/o7.yaml``. Master session:
+``calib/linker_session.yaml``. Robot q stays in configs/hands/{hand}.yaml.
 """
 
 from __future__ import annotations
@@ -68,7 +67,7 @@ def _parse_args(argv=None):
     p.add_argument(
         "--no-preview-mp",
         action="store_true",
-        help="mp_curl: disable the live MediaPipe-21 OpenCV window during capture",
+        help="Linker: disable the live OpenCV preview window during capture",
     )
     p.add_argument(
         "--method",
@@ -83,7 +82,7 @@ def _parse_args(argv=None):
     p.add_argument(
         "--export-only",
         action="store_true",
-        help="Linker: re-export curl + mp_curl from an existing session file",
+        help="Linker: re-export PalmTip curl from an existing session file",
     )
     return p.parse_args(argv)
 
@@ -280,11 +279,11 @@ def _wait_with_mp_preview(
     prompt: str,
     *,
     extra: str = "",
-    win: str = "mp_curl MP21",
+    win: str = "linker preview",
     pose_name: str = "",
     enabled: bool = True,
 ) -> str:
-    """Like ``_wait_enter``, but keep refreshing a MediaPipe-21 stick-figure window.
+    """Like ``_wait_enter``, but keep refreshing an OpenCV stick-figure window.
 
     Terminal: Enter / s / q / a / r (same as before).
     OpenCV window: Space/Enter=confirm, s=skip, q=quit, a=again, r=redo.
@@ -307,19 +306,18 @@ def _wait_with_mp_preview(
     hint += "  | 视窗: Space/Enter 同确认"
     print(hint, flush=True)
 
-    title = f"{side} {pose_name}".strip() or f"{side} MP21"
+    title = f"{side} {pose_name}".strip() or f"{side} preview"
     while True:
         ok, raw = _read_frame(xrt, side)
         if ok:
             mp21 = openxr26_to_mediapipe21(raw)
             try:
-                feat = None
-                from xr_hand_retarget.algorithms.mp_curl_o6 import (
-                    extract_curl_features_mp21,
+                from xr_hand_retarget.algorithms.palm_tip import (
+                    extract_palm_tip,
+                    format_feat,
                 )
 
-                feat = extract_curl_features_mp21(mp21, side)
-                hud = _fmt_feat2(feat)
+                hud = format_feat(extract_palm_tip(raw, side))
             except Exception:
                 hud = "TRACK"
         else:
@@ -589,23 +587,14 @@ def _export_linker_session(args) -> int:
     print("\nExported from session:", flush=True)
     for p in paths:
         print(f"  {p}", flush=True)
-    print(
-        "\nRun: FA_HAND=o6|l6|o7 ./run.sh vr-xrt wrist\n"
-        "  mp_curl: FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist",
-        flush=True,
-    )
+    print("\nRun: FA_HAND=o6|l6|o7 ./run.sh vr-xrt wrist", flush=True)
     return 0
 
 
 def _run_linker_unified_capture(cfg, args) -> int:
-    """One VR pass → linker_session.yaml + curl (o6/l6/o7) + mp_curl."""
+    """One VR pass → linker_session.yaml + PalmTip curl (o6/l6/o7)."""
     import time
 
-    from xr_hand_retarget.algorithms.mp_curl_o6 import (
-        extract_curl_features_mp21,
-        feat2_to_dict,
-        mp21_to_list,
-    )
     from xr_hand_retarget.algorithms.palm_tip import (
         capture_sides_for_calib,
         evaluate_pose_gate,
@@ -619,7 +608,6 @@ def _run_linker_unified_capture(cfg, args) -> int:
         dump_session,
         export_from_session,
         load_session,
-        median_feat2,
         median_palm_feat,
         palm_feat_to_dict,
     )
@@ -632,7 +620,7 @@ def _run_linker_unified_capture(cfg, args) -> int:
         raise SystemExit(1) from exc
 
     preview_on = not bool(getattr(args, "no_preview_mp", False))
-    win = "linker unified MP21"
+    win = "linker PalmTip"
     show_mp21_window = None
     close_mp21_windows = None
     if preview_on:
@@ -643,13 +631,9 @@ def _run_linker_unified_capture(cfg, args) -> int:
         except Exception as exc:
             print(f"OpenCV preview unavailable ({exc}); text-only capture", flush=True)
             preview_on = False
-            show_mp21_window = None
-            close_mp21_windows = None
 
     session_path = (
-        Path(args.session).expanduser()
-        if args.session
-        else DEFAULT_SESSION
+        Path(args.session).expanduser() if args.session else DEFAULT_SESSION
     )
     if args.session and not session_path.is_absolute():
         pkg_out = Path(__file__).resolve().parents[1] / session_path
@@ -668,9 +652,8 @@ def _run_linker_unified_capture(cfg, args) -> int:
     print(
         f"LinkerHand 统一标定 ({model.upper()} 触发，O6/L6/O7 共用)\n"
         f"  会话 → {session_path}\n"
-        "  导出 → calib/o6.yaml, l6.yaml, o7.yaml (curl) + calib/mp_curl.yaml\n"
+        "  导出 → calib/o6.yaml, l6.yaml, o7.yaml (PalmTip curl)\n"
         "  姿态: open / together / fist / good / thumb_along / pinch×4\n"
-        "  每组同时采 PalmTip(VR26) + MP21；gate 以 PalmTip 为准\n"
         f"  preview={'ON ' + win if preview_on else 'off (--no-preview-mp)'}",
         flush=True,
     )
@@ -689,54 +672,43 @@ def _run_linker_unified_capture(cfg, args) -> int:
             mp21 = openxr26_to_mediapipe21(raw)
             if not hud:
                 try:
-                    mp_feat = extract_curl_features_mp21(mp21, side)
-                    palm = extract_palm_tip(raw, side)
-                    hud = f"{format_feat(palm)} | {_fmt_feat2(mp_feat)}"
+                    hud = format_feat(extract_palm_tip(raw, side))
                 except Exception:
                     hud = "TRACK"
         else:
             mp21 = np.zeros((21, 3), dtype=np.float64)
             hud = hud or "inactive/zero"
-        title = f"{side} {pose_name}".strip() or f"{side} unified"
+        title = f"{side} {pose_name}".strip() or f"{side} palm"
         show_mp21_window(win, mp21, title=title, hud=hud[:220])
 
     def sample(side: str, name: str, calib, *, force: bool):
         period = 1.0 / max(args.rate, 1.0)
         deadline = time.time() + max(args.seconds, 0.2)
         palm_samples = []
-        mp_samples = []
-        mp21s = []
         rejected = 0
         gated = 0
         while time.time() < deadline:
             ok, raw = _read_frame(xrt, side)
             if ok:
                 palm_feat = extract_palm_tip(raw, side)
-                mp21 = openxr26_to_mediapipe21(raw)
-                mp_feat = extract_curl_features_mp21(mp21, side)
                 gate_ok, _why = evaluate_pose_gate(name, palm_feat, calib)
                 if force or gate_ok:
                     palm_samples.append(palm_feat)
-                    mp_samples.append(mp_feat)
-                    mp21s.append(mp21)
                 else:
                     gated += 1
                 if preview_on and show_mp21_window is not None:
                     show_mp21_window(
                         win,
-                        mp21,
+                        openxr26_to_mediapipe21(raw),
                         title=f"{side} {name} CAPTURE",
-                        hud=f"{format_feat(palm_feat)} | {_fmt_feat2(mp_feat)}"[:220],
+                        hud=format_feat(palm_feat)[:220],
                     )
             else:
                 rejected += 1
                 pump_preview(side, name, hud="reject")
             time.sleep(period)
         if not palm_samples:
-            print(
-                f"  无有效帧 (rejected={rejected} gated={gated})",
-                flush=True,
-            )
+            print(f"  无有效帧 (rejected={rejected} gated={gated})", flush=True)
             return None
         if not force and gated and len(palm_samples) < 8:
             print(
@@ -745,19 +717,12 @@ def _run_linker_unified_capture(cfg, args) -> int:
             )
             return None
         palm_med = median_palm_feat(palm_samples)
-        mp_med = median_feat2(mp_samples)
-        mp21_med = np.median(np.stack(mp21s, axis=0), axis=0)
         print(
             f"  已采 n={len(palm_samples)} reject={rejected} gated={gated}\n"
-            f"    palm: {format_feat(palm_med)}\n"
-            f"    mp:   {_fmt_feat2(mp_med)}",
+            f"    palm: {format_feat(palm_med)}",
             flush=True,
         )
-        return {
-            "palm": palm_feat_to_dict(palm_med),
-            "mp": feat2_to_dict(mp_med),
-            "mp21": mp21_to_list(mp21_med),
-        }
+        return {"palm": palm_feat_to_dict(palm_med)}
 
     def capture_one(side, calib, name, hint, takes_side: dict):
         pose_takes: list[dict] = []
@@ -765,18 +730,14 @@ def _run_linker_unified_capture(cfg, args) -> int:
             ok, raw = _read_frame(xrt, side)
             if ok:
                 palm_feat = extract_palm_tip(raw, side)
-                mp_feat = extract_curl_features_mp21(openxr26_to_mediapipe21(raw), side)
-                live = (
-                    f"palm: {format_feat(palm_feat)} | mp: {_fmt_feat2(mp_feat)}"
-                )
+                live = format_feat(palm_feat)
                 gate_ok, why = evaluate_pose_gate(name, palm_feat, calib)
                 gate = "OK" if gate_ok else "FAIL " + "; ".join(why[:3])
             else:
                 live, gate_ok, gate = "inactive/zero", False, "FAIL inactive"
-            n = len(pose_takes)
             print(f"\n[{side}] {name}: {hint}", flush=True)
             print(f"  now: {live}", flush=True)
-            print(f"  gate: {gate}  (已采组数={n})", flush=True)
+            print(f"  gate: {gate}  (已采组数={len(pose_takes)})", flush=True)
             cmd = _wait_with_mp_preview(
                 xrt,
                 side,
@@ -837,19 +798,15 @@ def _run_linker_unified_capture(cfg, args) -> int:
     try:
         if args.preview_only:
             for side in sides:
-                print(f"live unified [{side}]  Ctrl+C 退出", flush=True)
+                print(f"live palm [{side}]  Ctrl+C 退出", flush=True)
                 try:
                     while True:
                         ok, raw = _read_frame(xrt, side)
                         if not ok:
                             print("  (inactive / zero)          ", end="\r", flush=True)
                         else:
-                            palm = extract_palm_tip(raw, side)
-                            mp = extract_curl_features_mp21(
-                                openxr26_to_mediapipe21(raw), side
-                            )
                             print(
-                                f"  {format_feat(palm)} | {_fmt_feat2(mp)}     ",
+                                f"  {format_feat(extract_palm_tip(raw, side))}     ",
                                 end="\r",
                                 flush=True,
                             )
@@ -880,10 +837,7 @@ def _run_linker_unified_capture(cfg, args) -> int:
             if args.skip_pinch:
                 print(f"[{side}] pinch skipped (--skip-pinch)", flush=True)
             else:
-                print(
-                    f"\n[{side}] 捏合标定：食/中/无名/小指",
-                    flush=True,
-                )
+                print(f"\n[{side}] 捏合标定：食/中/无名/小指", flush=True)
                 cmd = _wait_with_mp_preview(
                     xrt,
                     side,
@@ -920,8 +874,7 @@ def _run_linker_unified_capture(cfg, args) -> int:
             mirror_from = sides[0]
             mirror_to = "right" if mirror_from == "left" else "left"
             print(
-                f"export: mirror {mirror_from} → {mirror_to} "
-                f"(palm az×{az_sign}, mp lat×-1)",
+                f"export: mirror {mirror_from} → {mirror_to} (palm az×{az_sign})",
                 flush=True,
             )
 
@@ -930,16 +883,11 @@ def _run_linker_unified_capture(cfg, args) -> int:
             mirror_from=mirror_from,
             mirror_to=mirror_to,
             az_sign=az_sign,
-            lat_sign=-1.0,
         )
         print("\nExported:", flush=True)
         for p in paths:
             print(f"  {p}", flush=True)
-        print(
-            f"\nRun curl:  FA_HAND={model} ./run.sh vr-xrt wrist\n"
-            f"Run mp_curl: FA_HAND={model} FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist",
-            flush=True,
-        )
+        print(f"\nRun: FA_HAND={model} ./run.sh vr-xrt wrist", flush=True)
         return 0
     finally:
         if close_mp21_windows is not None:
@@ -1188,323 +1136,6 @@ def _run_o6_curl_capture(cfg, args) -> int:
     )
 
 
-def _run_mp_curl_capture(cfg, args) -> int:
-    """Shared MP21 curl calib for o6/l6/o7; VR curl poses; multi-take per gesture."""
-    import time
-
-    from xr_hand_retarget.algorithms.curl_hand2 import load_calib_file, seed_side_calib
-    from xr_hand_retarget.algorithms.mp_curl_o6 import (
-        _DEFAULT_CALIB,
-        dump_calib_file,
-        extract_curl_features_mp21,
-        feat2_from_dict,
-        feat2_to_dict,
-        mp21_to_list,
-    )
-    from xr_hand_retarget.calibrate_xhand1 import _read_frame
-    from xr_hand_retarget.landmarks import openxr26_to_mediapipe21
-
-    try:
-        import xrobotoolkit_sdk as xrt
-    except ImportError as exc:
-        print("xrobotoolkit_sdk not found", file=sys.stderr)
-        raise SystemExit(1) from exc
-
-    preview_on = not bool(getattr(args, "no_preview_mp", False))
-    win = "mp_curl MP21"
-    show_mp21_window = None
-    close_mp21_windows = None
-    if preview_on:
-        try:
-            import cv2  # noqa: F401 — probe before enabling window
-
-            from xr_hand_retarget.preview import close_mp21_windows, show_mp21_window
-        except Exception as exc:
-            print(f"OpenCV preview unavailable ({exc}); text-only capture", flush=True)
-            preview_on = False
-            show_mp21_window = None
-            close_mp21_windows = None
-    # Shared human file (not per-robot).
-    out = _DEFAULT_CALIB if not args.out else Path(args.out).expanduser()
-    if args.out and not out.is_absolute():
-        # Relative --out: prefer package configs/ when writing calib/*
-        pkg_out = Path(__file__).resolve().parents[1] / out
-        if str(out).startswith("configs/") or not out.parent.exists():
-            out = pkg_out
-    sides = ("left", "right") if args.side == "full" else (args.side,)
-    print(
-        f"mp_curl: shared MediaPipe21 calib → {out}\n"
-        f"  poses=open/fist(拇入掌)/thumb_along+pinch; multi-take: a=再采一组 Enter=下一姿态\n"
-        f"  preview={'ON ' + win if preview_on else 'off (--no-preview-mp)'}",
-        flush=True,
-    )
-    print("init xrobotoolkit_sdk...", flush=True)
-    xrt.init()
-    time.sleep(0.8)
-    print("sdk ok  (采集期间不要同时跑 vr-xrt)", flush=True)
-
-    def pump_preview(side: str, pose_name: str = "", hud: str = "") -> None:
-        if not preview_on or show_mp21_window is None:
-            return
-        ok, raw = _read_frame(xrt, side)
-        if ok:
-            mp21 = openxr26_to_mediapipe21(raw)
-            if not hud:
-                try:
-                    hud = _fmt_feat2(extract_curl_features_mp21(mp21, side))
-                except Exception:
-                    hud = "TRACK"
-        else:
-            mp21 = np.zeros((21, 3), dtype=np.float64)
-            hud = hud or "inactive/zero"
-        title = f"{side} {pose_name}".strip() or f"{side} MP21"
-        show_mp21_window(win, mp21, title=title, hud=hud)
-
-    def sample(side: str, pose_name: str = ""):
-        period = 1.0 / max(args.rate, 1.0)
-        deadline = time.time() + max(args.seconds, 0.2)
-        feats = []
-        mp21s = []
-        rejected = 0
-        while time.time() < deadline:
-            ok, raw = _read_frame(xrt, side)
-            if ok:
-                mp21 = openxr26_to_mediapipe21(raw)
-                feats.append(extract_curl_features_mp21(mp21, side))
-                mp21s.append(mp21)
-                if preview_on and show_mp21_window is not None:
-                    show_mp21_window(
-                        win,
-                        mp21,
-                        title=f"{side} {pose_name} CAPTURE",
-                        hud=_fmt_feat2(feats[-1]),
-                    )
-            else:
-                rejected += 1
-                pump_preview(side, pose_name, hud="reject")
-            time.sleep(period)
-        if not feats:
-            print(f"  无有效帧 (rejected={rejected})", flush=True)
-            return None
-        feat = _median_feat2(feats)
-        mp21_med = np.median(np.stack(mp21s, axis=0), axis=0)
-        print(
-            f"  已采 n={len(feats)} reject={rejected}  {_fmt_feat2(feat)}",
-            flush=True,
-        )
-        if preview_on and show_mp21_window is not None:
-            show_mp21_window(
-                win,
-                mp21_med,
-                title=f"{side} {pose_name} median",
-                hud=_fmt_feat2(feat),
-            )
-        return feat, mp21_med
-
-    def capture_one(side, calib, name, hint, takes_side: dict):
-        pose_takes: list[dict] = []
-        while True:
-            ok, raw = _read_frame(xrt, side)
-            if ok:
-                live = _fmt_feat2(
-                    extract_curl_features_mp21(openxr26_to_mediapipe21(raw), side)
-                )
-            else:
-                live = "inactive/zero"
-            n = len(pose_takes)
-            print(f"\n[{side}] {name}: {hint}", flush=True)
-            print(f"  now: {live}  (已采组数={n})", flush=True)
-            cmd = _wait_with_mp_preview(
-                xrt,
-                side,
-                "  保持姿势后确认",
-                extra="a+Enter=再采一组(采完后)  r+Enter=清空重来  s=跳过  q=放弃",
-                win=win,
-                pose_name=name,
-                enabled=preview_on,
-            )
-            if cmd in ("q", "quit"):
-                return "quit"
-            if cmd in ("s", "skip"):
-                print(f"  skip {name}", flush=True)
-                return "skip"
-            if cmd in ("r", "redo") and not pose_takes:
-                continue
-            got = sample(side, pose_name=name)
-            if got is None:
-                print("  采集失败，重试", flush=True)
-                continue
-            feat, mp21_med = got
-            pose_takes.append(
-                {
-                    "features": feat2_to_dict(feat),
-                    "mp21": mp21_to_list(mp21_med),
-                }
-            )
-            # Aggregate so far → knot used at runtime
-            agg_feats = [feat2_from_dict(t["features"]) for t in pose_takes]
-            agg_feats = [f for f in agg_feats if f is not None]
-            agg = _median_feat2(agg_feats)
-            _apply_pose2(calib, name, agg)
-            print(f"  本组已写入；合计 {len(pose_takes)} 组 → knot 已用中位数", flush=True)
-            cmd2 = _wait_with_mp_preview(
-                xrt,
-                side,
-                "  继续？",
-                extra="Enter=下一姿态  a+Enter=再采一组  r+Enter=清空本组重来",
-                win=win,
-                pose_name=name,
-                enabled=preview_on,
-            )
-            if cmd2 in ("q", "quit"):
-                return "quit"
-            if cmd2 in ("a", "again", "+"):
-                continue
-            if cmd2 in ("r", "redo"):
-                pose_takes.clear()
-                print("  已清空本组，重新采集", flush=True)
-                continue
-            takes_side[name] = pose_takes
-            return "ok"
-
-    try:
-        if args.preview_only:
-            if preview_on and show_mp21_window is not None:
-                print(
-                    f"live mp_curl OpenCV [{'/'.join(sides)}]  "
-                    "视窗 q 或 Ctrl+C 退出",
-                    flush=True,
-                )
-                side0 = sides[0]
-                try:
-                    while True:
-                        ok, raw = _read_frame(xrt, side0)
-                        if not ok:
-                            show_mp21_window(
-                                win,
-                                np.zeros((21, 3)),
-                                title=f"{side0} MP21",
-                                hud="inactive/zero",
-                            )
-                        else:
-                            mp21 = openxr26_to_mediapipe21(raw)
-                            feat = extract_curl_features_mp21(mp21, side0)
-                            key = show_mp21_window(
-                                win,
-                                mp21,
-                                title=f"{side0} mp_curl",
-                                hud=_fmt_feat2(feat),
-                            )
-                            if key in (ord("q"), 27):
-                                break
-                        time.sleep(0.03)
-                except KeyboardInterrupt:
-                    print("", flush=True)
-                return 0
-            for side in sides:
-                print(f"live mp_curl features [{side}]  Ctrl+C 退出", flush=True)
-                try:
-                    while True:
-                        ok, raw = _read_frame(xrt, side)
-                        if not ok:
-                            print("  (inactive / zero)          ", end="\r", flush=True)
-                        else:
-                            feat = extract_curl_features_mp21(
-                                openxr26_to_mediapipe21(raw), side
-                            )
-                            print(f"  {_fmt_feat2(feat)}     ", end="\r", flush=True)
-                        time.sleep(0.08)
-                except KeyboardInterrupt:
-                    print("", flush=True)
-            return 0
-
-        store = (
-            load_calib_file(out)
-            if out.is_file()
-            else {"left": seed_side_calib(), "right": seed_side_calib()}
-        )
-        all_takes: dict[str, dict[str, list]] = {
-            s: {} for s in ("left", "right") if s in store
-        }
-        # Preserve prior takes for sides not being recaptured
-        if out.is_file():
-            import yaml
-
-            with out.open("r", encoding="utf-8") as f:
-                prev = yaml.safe_load(f) or {}
-            for sname, sblock in (prev.get("sides") or {}).items():
-                if sname not in sides and isinstance(sblock, dict):
-                    old = sblock.get("takes")
-                    if old:
-                        all_takes.setdefault(sname, {}).update(old)
-
-        for side in sides:
-            print(f"\n======== {side.upper()} (mp_curl) ========", flush=True)
-            takes_side: dict[str, list] = {}
-            for name, hint in _MP_CURL_CORE:
-                st = capture_one(side, store[side], name, hint, takes_side)
-                if st == "quit":
-                    print("aborted, file not written", flush=True)
-                    return 1
-            if args.skip_pinch:
-                print(f"[{side}] pinch skipped (--skip-pinch)", flush=True)
-            else:
-                print(
-                    f"\n[{side}] 精细化：拇指依次收到食/中/无/小指下方",
-                    flush=True,
-                )
-                cmd = _wait_with_mp_preview(
-                    xrt,
-                    side,
-                    "  开始捏合标定？",
-                    extra="k+Enter=集体跳过（保留已有 pinch）",
-                    win=win,
-                    pose_name="pinch?",
-                    enabled=preview_on,
-                )
-                if cmd in ("q", "quit"):
-                    print("aborted, file not written", flush=True)
-                    return 1
-                if cmd not in ("k", "skip", "s"):
-                    captured = 0
-                    for name, hint in _PINCH:
-                        st = capture_one(side, store[side], name, hint, takes_side)
-                        if st == "quit":
-                            print("aborted, file not written", flush=True)
-                            return 1
-                        if st == "ok":
-                            captured += 1
-                    store[side].pinch_skipped = captured == 0
-                    print(
-                        f"  pinch "
-                        f"{'全部跳过' if captured == 0 else f'已写入 {captured}/4 指'}",
-                        flush=True,
-                    )
-            all_takes[side] = takes_side
-
-        dump_calib_file(out, store, takes=all_takes)
-        print(f"\nwrote shared {out}", flush=True)
-        model = getattr(cfg, "backend", "o6")
-        if model not in ("o6", "l6", "o7"):
-            model = "o6"
-        print(
-            f"然后: FA_HAND={model} FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist",
-            flush=True,
-        )
-        print(
-            "  (o6/l6/o7 共用 mp_curl.yaml；机器人 pinch_q 各读 hands/{o6,l6,o7}.yaml)",
-            flush=True,
-        )
-        return 0
-    finally:
-        if close_mp21_windows is not None:
-            close_mp21_windows(win)
-        try:
-            xrt.close()
-        except Exception:
-            pass
-
-
 def _linker_method(cfg, args) -> str:
     from xr_hand_retarget.algorithms import normalize
 
@@ -1538,7 +1169,7 @@ def main(argv=None):
             return _export_linker_session(args)
         return _run_linker_unified_capture(cfg, args)
 
-    if cfg.retargeting_type == "curl":
+    if cfg.backend == "wuji":
         if args.dump_pkl:
             return _capture_pkl(
                 cfg,
@@ -1547,12 +1178,13 @@ def main(argv=None):
                 rate=args.rate,
                 out=Path(args.dump_pkl),
             )
-        if args.preview_mp:
+        if args.preview_mp or args.preview_only:
             from xr_hand_retarget.preview import run_preview
 
             vis_side = "left" if args.side == "left" else "right"
             return run_preview(cfg, side=vis_side, rate=args.rate)
-        return _run_hand2_curl_capture(cfg, args)
+        # Wuji production path is official only (curl capture retired).
+        return _wuji_help(cfg)
 
     if args.dump_pkl:
         return _capture_pkl(

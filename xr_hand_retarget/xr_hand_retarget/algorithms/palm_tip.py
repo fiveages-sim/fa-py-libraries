@@ -2798,29 +2798,14 @@ class PalmTipRetargeter:
         limits, _vel = load_linker_limits(side, model=model, urdf_path=gains.urdf_path)
         self.limits = limits[: int(self.workspace.dof)]
         self.model = model
-        raw_solver = str(solver or "curl").strip().lower()
-        dof = int(self.workspace.dof)
-        if raw_solver in ("veccurl", "vcurl"):
-            if dof >= 7:
-                raw_solver = "veccurl"
-            else:
-                print(
-                    f"[{side}] veccurl is O7; using nest on {model}",
-                    flush=True,
-                )
-                raw_solver = "nest"
-        elif raw_solver in ("nest", "keyvec", "nest_vec"):
-            if dof >= 7:
-                print(
-                    f"[{side}] nest is O6/L6 only; O7 curl (use veccurl for tip−nest)",
-                    flush=True,
-                )
-                raw_solver = "curl"
-            else:
-                raw_solver = "nest"
-        else:
-            raw_solver = "curl"
-        self.solver = raw_solver
+        # Production solver is curl only (nest / veccurl / mp_curl retired).
+        raw = str(solver or "curl").strip().lower()
+        if raw not in ("", "curl", "calib", "lerp", "curl_calib"):
+            print(
+                f"[{side}] ignoring solver={solver!r}; using curl",
+                flush=True,
+            )
+        self.solver = "curl"
         self._nest_mode = ""
         if calib is not None:
             self.calib = calib
@@ -2845,12 +2830,7 @@ class PalmTipRetargeter:
                 if bool(getattr(self.workspace, "attract_enabled", True))
                 else "off"
             )
-            if int(self.workspace.dof) < 7:
-                j2_src = "nest" if self.solver == "curl" else "slot"
-            elif self.solver == "veccurl":
-                j2_src = "vec"
-            else:
-                j2_src = "pad"
+            j2_src = "nest" if int(self.workspace.dof) < 7 else "pad"
             mids = []
             max_t = float(getattr(self.workspace, "pinch_knot_max_t", _PINCH_KNOT_MAX_T))
             for n in FINGERS:
@@ -2967,57 +2947,21 @@ class PalmTipRetargeter:
         return self.set_j2_lock(not self._j2_lock)
 
     def retarget(self, joints26: np.ndarray) -> np.ndarray:
-        if self.solver == "nest":
-            from xr_hand_retarget.algorithms.nest import retarget_nest
-
-            q, decision = retarget_nest(
-                joints26,
-                self.side,
-                self.calib,
-                self.limits,
-                self.workspace,
-                j2_lock=self._j2_lock,
-            )
-            if decision.mode != self._nest_mode:
-                self._nest_mode = decision.mode
-                print(
-                    f"[{self.side}] nest mode={decision.mode}"
-                    f"{'' if decision.slot == 'none' else '/' + decision.slot} "
-                    f"fist_w={decision.fist_w:.2f} pinch={decision.w_pinch:.2f} "
-                    f"r={decision.nest_r:.2f} "
-                    f"lat={getattr(decision, 'nest_lat', 0.0):.2f} "
-                    f"j1={q[_THUMB_J1]:.2f} j2={q[_THUMB_J2]:.2f}",
-                    flush=True,
-                )
-            q = np.clip(q, self.limits[:, 0], self.limits[:, 1])
-            alpha = float(np.clip(self.gains.output_alpha, 1e-3, 1.0))
-            if self._prev is None or alpha >= 1.0 - 1e-12:
-                self._prev = q
-                return q
-            blended = (1.0 - alpha) * self._prev + alpha * q
-            self._prev = blended
-            return blended
         feat = extract_palm_tip(joints26, self.side)
         q = map_palm_tip(feat, self.calib, self.limits, self.workspace)
         q = np.asarray(q, dtype=np.float64).copy()
         j2_az = float(q[_THUMB_J2])
-        use_vec = self.solver == "veccurl"
-        o7_curl = int(self.workspace.dof) >= 7 and not use_vec
+        o7_curl = int(self.workspace.dof) >= 7
         dec = None
         if o7_curl:
             dec = classify_o7_pinch(
                 feat, self.calib, self.workspace, sticky=self._pinch_slot
             )
             self._pinch_slot = dec.slot
-        if int(self.workspace.dof) >= 7:
-            if use_vec:
-                q[_THUMB_J2] = blend_pad_j2_vec(
-                    j2_az, feat, self.workspace, self.calib
-                )
-            else:
-                q[_THUMB_J2] = blend_pad_j2(
-                    j2_az, feat, self.workspace, self.calib, decision=dec
-                )
+        if o7_curl:
+            q[_THUMB_J2] = blend_pad_j2(
+                j2_az, feat, self.workspace, self.calib, decision=dec
+            )
         else:
             q[_THUMB_J2] = blend_pinch_j2(j2_az, feat, self.workspace, self.calib)
         q = apply_j2_lock(q, self.workspace, self._j2_lock)

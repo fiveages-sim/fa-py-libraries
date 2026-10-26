@@ -1,41 +1,75 @@
 """Shared retarget algorithms (no ROS, no XRT).
 
-Hand yaml only picks a name. Implementations live here.
+One method per hand family (aligned with teleop_ws):
+
+| hand   | method   | teleop_ws peer              |
+|--------|----------|-----------------------------|
+| xhand1 | vector   | AnyDex KeyVectorOptimizer   |
+| o6/l6/o7 | curl   | GloveYamlRemap (curl expr)  |
+| wuji   | official | WujiHand2SdkRetarget        |
 """
 
 from __future__ import annotations
 
-# name → one-line character (also in configs/local.yaml.example)
-CATALOG: dict[str, str] = {
-    "dexpilot": (
-        "开源 dex-retargeting 迁来的 tip 投影。捏合最好，合不了掌，吃 CPU。"
-    ),
-    "vector": "SomeHand 骨链 L-BFGS。跟手较好，捏合一般。",
-    "curl": "开掌/握拳/对掌标定插值。Pico 食指侧角：并拢=0，外开到极限=正极限。",
-    "nest": "O6 第二条：RViz 食指/中指捏合点当巢，指尖→巢；掌侧/掌内用拳门拆开。",
-    "veccurl": "O7 第三条：tip−nest 三标量插到 j3/j2/j1，不是 IK。日常仍用 curl。",
-    "mp_curl": (
-        "O6/L6/O7：VR26→MediaPipe21 骨角 curl 标定插值（与 PalmTip curl 并列）。"
-    ),
-    "thumb_ik": "拇指 TipDir IK，四指几何 remap。",
-    "official": "Wuji AdaptiveOptimizerAnalytical（第三方仓）。",
+# Canonical method per backend / hands.type
+HAND_METHOD: dict[str, str] = {
+    "xhand1": "vector",
+    "o6": "curl",
+    "l6": "curl",
+    "o7": "curl",
+    "linker": "curl",
+    "wuji": "official",
 }
 
-# local.yaml method → packaged solver
+CATALOG: dict[str, str] = {
+    "vector": "XHand1：骨链键向量优化（对齐 teleop_ws AnyDex KeyVector）。",
+    "curl": "Linker O6/L6/O7：开掌/握拳标定插值（对齐手套 YAML curl remap）。",
+    "official": "Wuji Hand2：官方 AdaptiveOptimizerAnalytical / SDK retarget。",
+}
+
+# Legacy aliases → canonical (then HAND_METHOD may still override by backend)
 ALIASES: dict[str, str] = {
-    "l2": "dexpilot",
+    "l2": "vector",
+    "dexpilot": "vector",
     "somehand": "vector",
-    "ik": "thumb_ik",
-    "thumb": "thumb_ik",
+    "ik": "vector",
+    "thumb": "vector",
+    "thumb_ik": "vector",
     "curl_calib": "curl",
     "calib": "curl",
     "lerp": "curl",
-    "vcurl": "veccurl",
-    "mediapipe": "mp_curl",
-    "mp21_curl": "mp_curl",
+    "nest": "curl",
+    "veccurl": "curl",
+    "vcurl": "curl",
+    "mp_curl": "curl",
+    "mediapipe": "curl",
+    "mp21_curl": "curl",
+    "wuji": "official",
+    "analytical": "official",
 }
 
 
 def normalize(name: str | None) -> str:
     raw = (name or "").strip().lower()
     return ALIASES.get(raw, raw)
+
+
+def method_for_backend(backend: str, requested: str | None = None) -> str:
+    """Resolve the single allowed method for a hand backend."""
+    key = (backend or "").strip().lower()
+    canonical = HAND_METHOD.get(key)
+    if canonical is None:
+        raise ValueError(
+            f"unknown backend {backend!r}; expected "
+            f"{'|'.join(sorted(set(HAND_METHOD) - {'linker'}))}"
+        )
+    if not requested:
+        return canonical
+    got = normalize(requested)
+    if got != canonical:
+        print(
+            f"[retarget] backend={key} ignores method={requested!r}; "
+            f"using {canonical!r} (one method per hand)",
+            flush=True,
+        )
+    return canonical

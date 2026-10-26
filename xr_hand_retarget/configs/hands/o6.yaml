@@ -1,12 +1,7 @@
 # O6 robot workspace + semantics (RViz / 实机测的 q).
 # Human curl: linker.user on the index yaml (calib/o6.yaml).
 #
-# 两条技术路线共用下面 pinch_q（不要为 nest 再采一套）：
-#   curl — 特征插值 + attract（日常）
-#   nest — 食指/中指捏合点当作「四指能到的中心」锚点，见 docs/O6_NEST.md
-#         C_index:  j2=1.0  j1=0.41  index=0.8
-#         C_middle: j2=1.3  j1=0.41  middle=0.83
-#         无名/小指跟中指槽；拳心走 fist_envelope，不要用捏合 j1 穿掌。
+# PalmTip curl：特征插值 + attract。pinch_q 为 RViz 捏合端点。
 
 retargeting:
   curl:

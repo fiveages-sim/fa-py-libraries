@@ -1,4 +1,4 @@
-"""Load hand YAML configs (curl / thumb_ik / vector / dexpilot)."""
+"""Load XHand1 hand YAML (vector / KeyVector only)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from xr_hand_retarget.algorithms.collision import CollisionGains
 from xr_hand_retarget.algorithms.curl_xhand1 import CurlCalibGains
 from xr_hand_retarget.algorithms.remap import FingerChainGains, IndexAbductionGains, ThumbTipGains
 from xr_hand_retarget.algorithms.safety_xhand1 import MotionSafetyGains
-from xr_hand_retarget.algorithms.thumb_ik import ThumbIkGains
 from xr_hand_retarget.algorithms.vector_retarget import (
     DexPilotGains,
     DistanceConstraint,
@@ -25,7 +24,6 @@ from xr_hand_retarget.algorithms.vector_retarget import (
     VectorConstraint,
     VectorRetargetConfig,
     _default_finger_attractors,
-    default_xhand1_dexpilot_config,
     default_xhand1_vector_config,
 )
 
@@ -44,7 +42,6 @@ class HandConfig:
     thumb_tip: ThumbTipGains
     index_abduction: IndexAbductionGains
     vector: VectorRetargetConfig
-    thumb_ik: ThumbIkGains
     curl: CurlCalibGains
     controller: str
     topic_suffix: str
@@ -227,69 +224,17 @@ def _parse_bone_constraints(
 
 
 def _parse_vector_config(retargeting: dict[str, Any]) -> VectorRetargetConfig:
-    type_raw = str(retargeting.get("type") or "").lower()
-    profile = str(retargeting.get("profile") or "").lower()
-    if not profile:
-        if type_raw in ("dexpilot", "l2"):
-            profile = "dexpilot"
-        else:
-            profile = "somehand"
-
+    """XHand1 production path is vector (somehand / KeyVector), not DexPilot."""
     prep = retargeting.get("preprocess") or {}
     solver = retargeting.get("solver") or {}
+    # Keep DexPilotGains parse for YAML back-compat; unused by somehand profile.
     dexpilot = _parse_dexpilot_gains(retargeting)
     vectors, frames = _parse_bone_constraints(retargeting)
-
-    if profile == "dexpilot":
-        raw_dp = retargeting.get("dexpilot") or {}
-        use_dp_solver = type_raw in ("dexpilot", "l2") or "max_iterations" in raw_dp
-        return default_xhand1_dexpilot_config(
-            gains=dexpilot,
-            temporal_filter_alpha=float(
-                raw_dp.get(
-                    "temporal_filter_alpha",
-                    prep.get("temporal_filter_alpha", 0.65),
-                )
-            ),
-            max_iterations=int(
-                raw_dp.get(
-                    "max_iterations",
-                    25 if use_dp_solver else solver.get("max_iterations", 40),
-                )
-            ),
-            norm_delta=float(
-                raw_dp.get(
-                    "norm_delta",
-                    0.004 if use_dp_solver else solver.get("norm_delta", 0.004),
-                )
-            ),
-            output_alpha=float(
-                raw_dp.get(
-                    "output_alpha",
-                    0.5 if use_dp_solver else solver.get("output_alpha", 0.5),
-                )
-            ),
-            warm_start_remap=bool(
-                raw_dp.get(
-                    "warm_start_remap",
-                    raw_dp.get(
-                        "warm_start_hybrid",
-                        solver.get(
-                            "warm_start_remap",
-                            solver.get("warm_start_hybrid", True),
-                        ),
-                    ),
-                )
-            ),
-            urdf_path=retargeting.get("urdf_path") or raw_dp.get("urdf_path"),
-            vector_constraints=vectors,
-            distance_constraints=[],
-            frame_constraints=frames,
-        )
 
     defaults = retargeting.get("constraint_defaults") or {}
     ddef = defaults.get("distance") or {}
     base = default_xhand1_vector_config()
+    _ = prep  # reserved for future preprocess knobs
 
     distances: list[DistanceConstraint] = []
     weights_by_human = ddef.get("weights_by_human") or {}
@@ -336,54 +281,6 @@ def _parse_vector_config(retargeting: dict[str, Any]) -> VectorRetargetConfig:
         distance_constraints=distances,
         frame_constraints=frames,
         dexpilot=dexpilot,
-    )
-
-
-def _parse_thumb_ik(retargeting: dict[str, Any]) -> ThumbIkGains:
-    raw = retargeting.get("thumb_ik") or {}
-    offset = raw.get("tip_offset_m") or [0.0, 0.0, 0.0]
-    rot = raw.get("tip_rotation")
-    if rot is None:
-        rot = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
-    ref_q = raw.get("ref_q_thumb") or [0.0, 0.0, 0.0]
-    seg = raw.get("segment_scaling") or [1.0, 1.0, 1.0]
-    return ThumbIkGains(
-        tip_link=str(raw.get("tip_link", "thumb_tip")),
-        dir_link=str(raw.get("dir_link", "thumb_ip")),
-        human_tip_index=int(raw.get("human_tip_index", 4)),
-        human_root_index=int(raw.get("human_root_index", 1)),
-        auto_scale=bool(raw.get("auto_scale", True)),
-        tip_scale=float(raw.get("tip_scale", 1.0)),
-        scale_lateral=float(raw.get("scale_lateral", 1.0)),
-        scale_longitudinal=float(raw.get("scale_longitudinal", 1.0)),
-        scale_normal=float(raw.get("scale_normal", 1.0)),
-        tip_offset_m=(float(offset[0]), float(offset[1]), float(offset[2])),
-        tip_rotation=tuple(float(x) for x in rot),
-        segment_scaling=(float(seg[0]), float(seg[1]), float(seg[2])),
-        reach_margin=float(raw.get("reach_margin", 1.05)),
-        max_iterations=int(raw.get("max_iterations", 35)),
-        w_pos=float(raw.get("w_pos", 1.0)),
-        w_dir=float(raw.get("w_dir", 8.0)),
-        w_full=float(raw.get("w_full", 1.0)),
-        w_reg=float(raw.get("w_reg", 0.02)),
-        output_alpha=float(raw.get("output_alpha", 0.85)),
-        temporal_filter_alpha=float(raw.get("temporal_filter_alpha", 0.65)),
-        pinch_d1_m=float(raw.get("pinch_d1_m", 0.022)),
-        pinch_d2_m=float(raw.get("pinch_d2_m", 0.040)),
-        pinch_alpha_max=float(raw.get("pinch_alpha_max", 0.85)),
-        pinch_alpha_smooth=float(raw.get("pinch_alpha_smooth", 0.35)),
-        target_smooth_alpha=float(raw.get("target_smooth_alpha", 0.55)),
-        w_clearance=float(raw.get("w_clearance", 2.0)),
-        clearance_m=float(raw.get("clearance_m", 0.018)),
-        clearance_link=str(raw.get("clearance_link", "index_pip")),
-        thumb_max_delta_rad=float(raw.get("thumb_max_delta_rad", 0.08)),
-        w_rot_pref=float(raw.get("w_rot_pref", 0.12)),
-        rot_pref_span_m=float(raw.get("rot_pref_span_m", 0.028)),
-        pinch_blend=float(raw.get("pinch_blend", 0.0)),
-        joint2_scale=float(raw.get("joint2_scale", 1.0)),
-        joint2_bias=float(raw.get("joint2_bias", 0.0)),
-        urdf_path=raw.get("urdf_path"),
-        ref_q_thumb=(float(ref_q[0]), float(ref_q[1]), float(ref_q[2])),
     )
 
 
@@ -587,29 +484,20 @@ def load_hand_config(path: str | Path | None = None) -> HandConfig:
         lateral_span_m=float(index_raw.get("lateral_span_m", 0.028)),
         abduction_curl_fade=float(index_raw.get("abduction_curl_fade", 0.40)),
         lat_rest_m=float(index_raw.get("lat_rest_m", 0.0)),
+        middle_curl_gate_lo=float(index_raw.get("middle_curl_gate_lo", 0.30)),
+        middle_curl_gate_hi=float(index_raw.get("middle_curl_gate_hi", 0.65)),
+        middle_mcp_fist_ref_rad=float(
+            index_raw.get("middle_mcp_fist_ref_rad", 1.15)
+        ),
     )
 
-    rtype = str(retargeting.get("type") or "curl").lower()
-    profile = str(retargeting.get("profile") or "").lower()
-    if profile == "dexpilot" and rtype in ("thumb_ik", "thumb", "ik", "curl"):
-        rtype = "dexpilot"
-    if rtype in ("l2",):
-        rtype = "dexpilot"
-    if rtype in ("somehand",):
-        rtype = "vector"
-    if rtype in ("ik", "thumb"):
-        rtype = "thumb_ik"
-    if rtype in ("curl_calib", "calib", "lerp"):
-        rtype = "curl"
-    if rtype == "hybrid":
-        raise ValueError(
-            "retargeting.type 'hybrid' has been removed; "
-            "use curl | thumb_ik | vector | dexpilot"
-        )
-    if rtype not in ("curl", "thumb_ik", "vector", "dexpilot"):
-        raise ValueError(
-            f"unknown retargeting.type {rtype!r}; "
-            "expected curl | thumb_ik | vector | dexpilot"
+    # One method per hand: XHand1 → vector (AnyDex KeyVector peer).
+    rtype = "vector"
+    requested = str(retargeting.get("type") or "").lower()
+    if requested and requested not in ("vector", "somehand", ""):
+        print(
+            f"[retarget] xhand1 yaml type={requested!r} ignored; using vector",
+            flush=True,
         )
 
     collision_raw = safety.get("collision") or {}
@@ -625,7 +513,6 @@ def load_hand_config(path: str | Path | None = None) -> HandConfig:
         thumb_tip=thumb_tip,
         index_abduction=index_abduction,
         vector=_parse_vector_config(retargeting),
-        thumb_ik=_parse_thumb_ik(retargeting),
         curl=_parse_curl(retargeting, cfg_path, robot=robot),
         controller=str(ros.get("controller") or "hand_joint_controller"),
         topic_suffix=str(ros.get("topic_suffix") or "target_joint_position"),
@@ -635,7 +522,7 @@ def load_hand_config(path: str | Path | None = None) -> HandConfig:
         max_delta_rad=float(safety.get("max_delta_rad", 0.0)),
         hold_on_inactive=bool(safety.get("hold_on_inactive", True)),
         hold_on_zero_pose=bool(safety.get("hold_on_zero_pose", True)),
-        soft_collision=bool(safety.get("soft_collision", True)),
+        soft_collision=bool(safety.get("soft_collision", True)),  # default ON
         collision=_parse_collision(collision_raw),
         motion=_parse_motion(motion_raw),
         rate_hz=float(publish.get("rate_hz", 50.0)),

@@ -10,6 +10,10 @@ import numpy as np
 
 from xr_hand_retarget.backends.xhand1_config import HandConfig, load_hand_config
 
+from xr_hand_retarget.control.command_safety import (
+    CommandSafetyConfig,
+    parse_command_safety,
+)
 from xr_hand_retarget.safety import MotionSafetyGains, parse_motion_safety
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -183,6 +187,7 @@ class HandRuntimeConfig:
     wuji_curl: WujiCurlGains | None
     o6_curl: O6CurlGains | None = None
     motion: MotionSafetyGains | None = None
+    command: CommandSafetyConfig | None = None
 
     wuji_type: str = "curl"  # curl | official
     linker_type: str = "curl"  # curl | nest | veccurl | mp_curl
@@ -946,6 +951,9 @@ def load_runtime_config(
     unlock_frames = int(safety.get("unlock_frames", 5))
     stream_movej = bool(ros.get("stream_movej", backend in ("wuji", "o6", "l6", "o7")))
     motion = parse_motion_safety(safety)
+    command = parse_command_safety(safety, backend=backend)
+    if command.max_velocity is None and max_joint_vel_rad_s > 0.0:
+        command.max_velocity = float(max_joint_vel_rad_s)
 
     return HandRuntimeConfig(
         backend=backend,
@@ -971,6 +979,7 @@ def load_runtime_config(
         wuji_curl=wuji_curl,
         o6_curl=o6_curl,
         motion=motion,
+        command=command,
         wuji_type=wuji_type,
         linker_type=linker_type,
     )

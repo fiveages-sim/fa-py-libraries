@@ -61,14 +61,69 @@ class IndexAbductionGains:
 
     Palm lateral axis must NOT use INDEX_PROXIMAL (that made j1 insensitive:
     abducting the index also rotated the palm x-axis).
+
+    Middle-finger curl gate: open middle → j1≈0; only when middle contracts
+    (one scalar in [0,1]) does lateral mapping turn on.
     """
 
     abduction_sign: float = -1.0
     # |bone·x| at palm plane (m) mapped to ±0.174 rad abduction.
     lateral_span_m: float = 0.028
+    # Fade j1 as *index* MCP curl rises (legacy); 0 disables.
     abduction_curl_fade: float = 0.40
     # Subtract open-hand resting lateral (m) so neutral pose → j1≈0.
     lat_rest_m: float = 0.0
+    # Middle curl ∈ [0,1]: below lo → gate 0; above hi → gate 1 (smoothstep).
+    # Set both ≤0 to disable the middle gate.
+    middle_curl_gate_lo: float = 0.30
+    middle_curl_gate_hi: float = 0.65
+    # Fist reference for middle MCP curl (same units as FingerChainGains).
+    middle_mcp_fist_ref_rad: float = 1.15
+
+
+def middle_curl_norm(
+    joints26: np.ndarray,
+    *,
+    fist_ref_rad: float = 1.15,
+    scale: float = 1.0,
+) -> float:
+    """Scalar middle-finger contraction in [0,1] from MCP flexion."""
+    meta = _pos(joints26, J.MIDDLE_METACARPAL)
+    prox = _pos(joints26, J.MIDDLE_PROXIMAL)
+    inter = _pos(joints26, J.MIDDLE_INTERMEDIATE)
+    mcp = _flexion(meta, prox, inter)
+    return float(
+        np.clip(mcp * scale / max(float(fist_ref_rad), 1e-6), 0.0, 1.0)
+    )
+
+
+def index_abd_middle_gate(
+    joints26: np.ndarray,
+    gains: IndexAbductionGains,
+    *,
+    chain_scale: float = 1.0,
+) -> float:
+    """1 when middle is curled enough for index abduction; 0 when open."""
+    lo = float(gains.middle_curl_gate_lo)
+    hi = float(gains.middle_curl_gate_hi)
+    if hi <= 0.0 and lo <= 0.0:
+        return 1.0
+    if hi <= lo:
+        # Step at lo.
+        c = middle_curl_norm(
+            joints26,
+            fist_ref_rad=gains.middle_mcp_fist_ref_rad,
+            scale=chain_scale,
+        )
+        return 1.0 if c >= lo else 0.0
+    c = middle_curl_norm(
+        joints26,
+        fist_ref_rad=gains.middle_mcp_fist_ref_rad,
+        scale=chain_scale,
+    )
+    t = (c - lo) / max(hi - lo, 1e-6)
+    t = min(max(t, 0.0), 1.0)
+    return float(t * t * (3.0 - 2.0 * t))
 
 
 @dataclass
@@ -305,12 +360,19 @@ def _map_index_abduction(
     lo1: float,
     hi1: float,
     gains: IndexAbductionGains,
+    chain_scale: float = 1.0,
 ) -> float:
     """index_joint1: palm-plane lateral of INDEX_PROXIMAL − INDEX_METACARPAL.
 
     Uses middle–pinky palm axes so abducting the index does not rotate the
     measurement frame (old index–pinky x made j1 nearly constant).
+
+    Gated by middle-finger curl: open middle keeps j1≈0.
     """
+    gate = index_abd_middle_gate(joints26, gains, chain_scale=chain_scale)
+    if gate <= 1e-6:
+        return float(np.clip(0.0, lo1, hi1))
+
     x, _y, z = _palm_axes_for_index_abd(joints26, side)
     meta = _pos(joints26, J.INDEX_METACARPAL)
     prox = _pos(joints26, J.INDEX_PROXIMAL)
@@ -321,7 +383,24 @@ def _map_index_abduction(
     fade = 1.0
     if gains.abduction_curl_fade > 0.0:
         fade = float(np.clip(1.0 - mcp_norm / gains.abduction_curl_fade, 0.0, 1.0))
-    return float(np.clip(j1_raw * fade, lo1, hi1))
+    return float(np.clip(j1_raw * fade * gate, lo1, hi1))
+
+
+def apply_index_abd_middle_gate(
+    q: np.ndarray,
+    joints26: np.ndarray,
+    gains: IndexAbductionGains | None,
+    *,
+    chain_scale: float = 1.0,
+    index_j1: int = 3,
+) -> np.ndarray:
+    """Scale index_joint1 toward 0 by middle-curl gate (post vector solve)."""
+    if gains is None or q.size <= index_j1:
+        return q
+    gate = index_abd_middle_gate(joints26, gains, chain_scale=chain_scale)
+    out = np.asarray(q, dtype=np.float64).copy()
+    out[index_j1] = float(out[index_j1]) * gate
+    return out
 
 
 def _map_index(
@@ -364,6 +443,7 @@ def _map_index(
         lo1=lo[3],
         hi1=hi[3],
         gains=abd,
+        chain_scale=chain.scale,
     )
     return j1, j2, j3
 

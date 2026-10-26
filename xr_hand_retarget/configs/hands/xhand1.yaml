@@ -53,52 +53,12 @@ hand:
     - [0.0, 1.919]
 
 retargeting:
-  # curl | thumb_ik | vector(=somehand) | dexpilot
-  type: dexpilot
+  # Fixed: vector (teleop_ws AnyDex KeyVector peer). Other types ignored.
+  type: vector
+  profile: somehand
   flexion_scale: 1.0
 
-  curl:
-    calib: calib/xrt_default.yaml   # T_person
-    output_alpha: 0.85
-    # pinch_target_link inherited from robot: when set
-
-  thumb_ik:
-    scale_lateral: 1.5
-    scale_normal: 0.5
-    w_pos: 8.0
-    w_dir: 8.0
-    w_full: 1.0
-    output_alpha: 0.72
-    temporal_filter_alpha: 0.50
-    pinch_d1_m: 0.022
-    pinch_d2_m: 0.040
-    thumb_max_delta_rad: 0.08
-    pinch_blend: 0.5
-
-  dexpilot:
-    scaling_factor: 1.8
-    project_dist: 0.03
-    escape_dist: 0.05
-    w_proj_s1: 200.0
-    w_proj_s2: 400.0
-    w_tip_pair_base: 1.0
-    w_wrist_tip: 15.0
-    max_iterations: 25
-    norm_delta: 0.004
-    output_alpha: 0.55
-    mix:
-      w_dexpilot: 1.0
-      w_bone: 0
-      w_fist: 0.0
-    fist_pose:
-      enabled: false
-      limit_frac: 0.98
-    fist_gate:
-      pinch_suppress: 0.0
-    thumb_seg:
-      enabled: false
-
-  # Geometric priors (T_robot knobs if you retune a unit — not per operator)
+  # Geometric priors (warm-start / T_robot knobs — not per operator)
   finger_chain:
     mcp_fist_ref_rad: 1.15
     pip_fist_ref_rad: 1.05
@@ -113,6 +73,10 @@ retargeting:
     lateral_span_m: 0.028
     abduction_curl_fade: 0.40
     lat_rest_m: 0.0
+    # 中指收缩门控：middle_curl∈[0,1]；低于 lo → 食指侧摆=0；高于 hi → 全开
+    middle_curl_gate_lo: 0.30
+    middle_curl_gate_hi: 0.65
+    middle_mcp_fist_ref_rad: 1.15
 
 ros:
   controller: hand_joint_controller
@@ -125,7 +89,8 @@ safety:
   max_delta_rad: 0.0
   hold_on_inactive: true
   hold_on_zero_pose: true
-  soft_collision: false
+  # soft self-collision (optional; default on). Override in configs/local.yaml → safety.soft_collision
+  soft_collision: true
   collision:
     thumb_index_guard: true
     ease: 0.88

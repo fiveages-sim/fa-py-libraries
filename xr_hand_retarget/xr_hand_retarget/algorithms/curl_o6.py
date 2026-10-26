@@ -364,44 +364,23 @@ class O6Backend:
             raise ValueError(f"{cfg.backend} backend requires retargeting.curl")
         self.side = side
         self.dof = int(cfg.dof)
-        rtype = (retargeting_type or cfg.retargeting_type or "curl").strip().lower()
-        if rtype in ("mp_curl", "mediapipe", "mp21_curl"):
-            rtype = "mp_curl"
-        elif rtype in ("nest", "keyvec", "nest_vec"):
-            rtype = "nest"
-        elif rtype in ("veccurl", "vcurl"):
-            rtype = "veccurl"
-        elif rtype in ("curl", "curl_calib", "calib", "lerp", ""):
-            rtype = "curl"
-        else:
-            print(
-                f"[retarget] backend={cfg.backend} unknown type {rtype!r}; using curl",
-                flush=True,
-            )
-            rtype = "curl"
+        from xr_hand_retarget.algorithms import method_for_backend
+
+        rtype = method_for_backend(
+            cfg.backend, retargeting_type or cfg.retargeting_type
+        )
         self.retargeting_type = rtype
         self.vector_profile = ""
         self._cfg = cfg
-        use_palm = cfg.backend in ("o6", "l6", "o7")
-        if rtype == "mp_curl":
-            from xr_hand_retarget.algorithms.mp_curl_o6 import MpCurlO6Retargeter
+        # Linker production path: PalmTip curl only (teleop_ws YAML-curl peer).
+        from xr_hand_retarget.algorithms.palm_tip import PalmTipRetargeter
 
-            self._inner = MpCurlO6Retargeter(side, cfg.o6_curl)
-            engine = "MpCurlO6Retargeter"
-            model = cfg.backend
-        elif use_palm:
-            from xr_hand_retarget.algorithms.palm_tip import PalmTipRetargeter
-
-            self._inner = PalmTipRetargeter(side, cfg.o6_curl, solver=rtype)
-            engine = "PalmTipRetargeter"
-            model = cfg.backend
-            self.retargeting_type = str(
-                getattr(self._inner, "solver", rtype) or rtype
-            )
-        else:
-            self._inner = CurlO6Retargeter(side, cfg.o6_curl)
-            engine = "CurlO6Retargeter"
-            model = self._inner.model
+        self._inner = PalmTipRetargeter(side, cfg.o6_curl, solver="curl")
+        engine = "PalmTipRetargeter"
+        model = cfg.backend
+        self.retargeting_type = str(
+            getattr(self._inner, "solver", "curl") or "curl"
+        )
         if self._inner.limits.shape[0] != self.dof:
             self.dof = int(self._inner.limits.shape[0])
         dt = 1.0 / max(float(cfg.rate_hz), 1.0)

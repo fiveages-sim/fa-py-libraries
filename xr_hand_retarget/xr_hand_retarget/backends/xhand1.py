@@ -1,4 +1,4 @@
-"""XHand1 backend — existing curl / thumb_ik / vector / dexpilot pipeline."""
+"""XHand1 backend — vector (KeyVector / somehand) only."""
 
 from __future__ import annotations
 

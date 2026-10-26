@@ -1,7 +1,6 @@
-# LinkerHand L6 — family index (layer 2). Same processor as O6.
-# Recapture human (unified session): python -m xr_hand_retarget.calibrate --config <this file>
+# LinkerHand L6 — family index (layer 2). Method fixed: curl.
+# Recapture: python -m xr_hand_retarget.calibrate --config <this file>
 # Run: FA_HAND=l6 ./run.sh vr-xrt wrist
-# mp_curl: FA_HAND=l6 FA_HAND_RETARGETING=mp_curl ./run.sh vr-xrt wrist
 
 backend: linker
 layout: l6

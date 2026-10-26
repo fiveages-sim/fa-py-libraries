@@ -31,6 +31,16 @@ safety:
   hold_on_zero_pose: true
   min_palm_area_m2: 1.0e-5
   unlock_frames: 5
+  # teleop_ws-style publish safety (Linker finger vmax ≈ 4 rad/s)
+  command:
+    enabled: true
+    publish_command: true
+    allowed_fsm_states: [3, 4]
+    max_velocity: 4.0
+    filter_cutoff_hz: 8.0
+    command_epsilon: 0.001
+    target_timeout: 0.25
+    require_resync: true
   position:
     enabled: true
     margin_rad: 0.0

@@ -1,10 +1,7 @@
 # O7 robot workspace + semantics (RViz 垫接触 q).
 # Human curl (PalmTip): linker.user on the index yaml (users/pico.yaml / calib/o6.yaml).
 #
-# method: curl     日常 PalmTip。四指 pack→满行程；j2 垫带；j3 跟 az。
-# method: mp_curl  VR26→MP21→curl；共用 calib/mp_curl.yaml；j1 折线用本文件 pinch_q + fist_envelope.j1_roof
-# method: veccurl  试验 tip−nest 三标量
-# method: nest     O7 回退 curl
+# Method fixed: curl (PalmTip).
 
 retargeting:
   curl:

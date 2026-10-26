@@ -14,3 +14,6 @@ joint_records/
 
 # VR 遥操 ros2 bag 录制
 xr_bags/
+
+__pycache__/
+*.py[cod]

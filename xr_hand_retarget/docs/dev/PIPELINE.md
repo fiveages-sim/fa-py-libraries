@@ -117,7 +117,7 @@ XRT 独占 PC Service 的约束留在 `source_xrt`，不要写进 `fa_hand.frame
 
 标准手是 **21 点笛卡尔**（MediaPipe 点序，与官方 wuji-retargeting / 光学手套同一套），不是 Hand 2 的 20 个主动关节。
 
-Linker **`mp_curl`**：`VR 26 → openxr26_to_mediapipe21 → MP21 骨角 curl knots → O6/L6/O7 q`（与默认 PalmTip `curl` 并列；标定见 `configs/calib/mp_curl.yaml`，机器人端点见 `hands/{o6,l6,o7}.yaml`）。
+Linker 生产路径是 PalmTip **`curl`**（`algorithms/palm_tip.py`）；XHand1 为 **`vector`**；Wuji 为 **`official`**。
 
 ```
 VR 26 / 手套 / DexCap  →  T_person（手势手册 + users/*.yaml）
