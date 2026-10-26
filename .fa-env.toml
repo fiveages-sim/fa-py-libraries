@@ -16,5 +16,5 @@ venv = ".venv"
 workspace = "~/ros2_ws"
 
 [xrobotoolkit]
-# 相对 vr_pose_publisher 的 pybind 目录（也可写绝对路径）
-# pybind_dir = "dependencies/XRoboToolkit-PC-Service-Pybind"
+# 已废弃：SDK 改为从 PyPI 安装 xrobotoolkit-sdk>=1.1.0（./init.sh install-xrobotoolkit）。
+# 旧配置 pybind_dir 不再使用。
