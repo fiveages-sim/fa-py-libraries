@@ -13,6 +13,35 @@ from pathlib import Path
 
 _STATE_PATH = Path.home() / ".local" / "state" / "fa-py-libraries" / "vr_mirror.json"
 _CONTROLLER_MARK = b"arms_target_manager_node"
+# Match XRTargetNode event-7 skip: pedal+stick must not net-zero the latch.
+MIRROR_DEBOUNCE_S = 0.25
+
+
+def apply_mirror_toggle(
+    *,
+    mirrored: bool,
+    skip_until: float,
+    now: float,
+    debounce_s: float = MIRROR_DEBOUNCE_S,
+) -> tuple[bool, float, bool]:
+    """Flip hand-mirror latch with debounce.
+
+    Returns ``(new_mirrored, new_skip_until, accepted)``. ``accepted`` is False
+    when ``now`` is still inside the previous event-7 window.
+    """
+    if float(now) < float(skip_until):
+        return bool(mirrored), float(skip_until), False
+    return (not bool(mirrored)), float(now) + float(debounce_s), True
+
+
+def optical_to_publish_side(optical_side: str, mirrored: bool) -> str:
+    """Map optical hand side → command topic side (swap when mirrored)."""
+    side = str(optical_side).lower()
+    if side not in ("left", "right"):
+        return side
+    if not mirrored:
+        return side
+    return "right" if side == "left" else "left"
 
 
 def controller_identity() -> tuple[int, int] | None:

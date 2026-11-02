@@ -16,7 +16,12 @@ from xr_hand_retarget.control.command_safety import (
     make_fsm_gate,
 )
 from xr_hand_retarget.local_profile import HandPlan, SideSpec, format_resolved, print_plan
-from xr_hand_retarget.mirror_latch import load_mirror, save_mirror
+from xr_hand_retarget.mirror_latch import (
+    apply_mirror_toggle,
+    load_mirror,
+    optical_to_publish_side,
+    save_mirror,
+)
 from xr_hand_retarget.pipeline import (
     SidePipeline,
     StreamMoveJSession,
@@ -81,6 +86,7 @@ class DualHandRetargetNode(Node):
         self._last_heartbeat = 0.0
         self._hold_heartbeat_dt = 0.2
         self._mirror = load_mirror()
+        self._mirror_skip_until = 0.0
 
         self._left = SidePipeline("left", cfg, retargeting_type, xrt=xrt)
         self._right = SidePipeline("right", right_cfg, right_retargeting, xrt=xrt)
@@ -194,16 +200,54 @@ class DualHandRetargetNode(Node):
         """Toggle hand L/R publish swap with VRInputHandler mirror (event 7)."""
         if int(msg.data) != _EVENT_MIRROR:
             return
-        self._mirror = not self._mirror
-        save_mirror(self._mirror)
-        self.get_logger().warn(
-            f"Hand mirror={'ON (L optical→R ctrl, R→L)' if self._mirror else 'OFF'}"
+        self._toggle_hand_mirror(source="controller_state")
+
+    def _toggle_hand_mirror(self, *, source: str) -> None:
+        """Flip the hand publish latch; debounce + force topic flush.
+
+        Without debounce, pedal and stick (or a repeated bus 7) toggle twice and
+        leave fingers unmirrored while the EE path is already mirrored. Without
+        flushing ``_last_sent``, identical joint cmds are deduped and the swapped
+        topics keep the pre-mirror hands until the next motion.
+        """
+        now = time.monotonic()
+        mirrored, skip_until, accepted = apply_mirror_toggle(
+            mirrored=self._mirror,
+            skip_until=self._mirror_skip_until,
+            now=now,
         )
+        if not accepted:
+            self.get_logger().info(
+                f"Hand mirror event 7 ignored ({source}, debounce)"
+            )
+            return
+        self._mirror_skip_until = skip_until
+        prev = {
+            "left": None
+            if self._last_sent["left"] is None
+            else np.asarray(self._last_sent["left"], dtype=float).copy(),
+            "right": None
+            if self._last_sent["right"] is None
+            else np.asarray(self._last_sent["right"], dtype=float).copy(),
+        }
+        self._mirror = mirrored
+        save_mirror(self._mirror)
+        # Drop dedupe so the post-swap topics get a fresh publish.
+        self._last_sent = {"left": None, "right": None}
+        self.get_logger().warn(
+            f"Hand mirror="
+            f"{'ON (L optical→R ctrl, R→L)' if self._mirror else 'OFF'} "
+            f"[{source}]"
+        )
+        for side in ("left", "right"):
+            q = prev[side]
+            if q is None:
+                continue
+            self._maybe_publish(side, self._pub_for_optical_side(side), q)
 
     def _pub_for_optical_side(self, side: str):
-        if self._mirror:
-            return self._pub_right if side == "left" else self._pub_left
-        return self._pub_left if side == "left" else self._pub_right
+        key = optical_to_publish_side(side, self._mirror)
+        return self._pub_right if key == "right" else self._pub_left
 
     def _live(self) -> bool:
         if not self._cmd_cfg.enabled:
