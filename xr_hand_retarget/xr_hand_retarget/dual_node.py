@@ -7,7 +7,7 @@ import time
 import numpy as np
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Float64MultiArray, Int32
+from std_msgs.msg import Bool, Float64MultiArray, Int32
 
 from xr_hand_retarget.config import HandRuntimeConfig
 from xr_hand_retarget.control.command_safety import (
@@ -17,8 +17,6 @@ from xr_hand_retarget.control.command_safety import (
 )
 from xr_hand_retarget.local_profile import HandPlan, SideSpec, format_resolved, print_plan
 from xr_hand_retarget.mirror_latch import (
-    apply_mirror_toggle,
-    load_mirror,
     optical_to_publish_side,
     save_mirror,
 )
@@ -29,8 +27,7 @@ from xr_hand_retarget.pipeline import (
     wire_j2_lock_sub,
 )
 
-_CONTROLLER_STATE_TOPIC = "/teleop/controller_state"
-_EVENT_MIRROR = 7
+_MIRROR_MODE_TOPIC = "/teleop/mirror_mode"
 
 
 def _side_limits(pipe: SidePipeline, cfg: HandRuntimeConfig) -> np.ndarray:
@@ -82,18 +79,13 @@ class DualHandRetargetNode(Node):
         self._held = {"left": 0, "right": 0}
         self._last_sent = {"left": None, "right": None}
         self._frame_source = frame_source
-        # Event 7: ATM swaps EE/trigger; DualHand swaps finger topic L↔R.
-        # With mirror_host (in-process), follow host.hand_mirror to avoid double toggle.
+        # ATM publishes /teleop/mirror_mode (same bit as EE/trigger). Follow level.
         self._mirror_host = mirror_host
         self._cmd_cfg: CommandSafetyConfig = cfg.command or CommandSafetyConfig()
         self._gate = make_fsm_gate(self._cmd_cfg)
         self._last_heartbeat = 0.0
         self._hold_heartbeat_dt = 0.2
-        if mirror_host is not None and hasattr(mirror_host, "hand_mirror"):
-            self._mirror = bool(mirror_host.hand_mirror)
-        else:
-            self._mirror = load_mirror()
-        self._mirror_skip_until = 0.0
+        self._mirror = False
 
         self._left = SidePipeline("left", cfg, retargeting_type, xrt=xrt)
         self._right = SidePipeline("right", right_cfg, right_retargeting, xrt=xrt)
@@ -128,8 +120,11 @@ class DualHandRetargetNode(Node):
         fsm_qos.reliability = ReliabilityPolicy.RELIABLE
         fsm_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.create_subscription(Int32, "/fsm_state", self._on_fsm, fsm_qos)
+        mirror_qos = QoSProfile(depth=1)
+        mirror_qos.reliability = ReliabilityPolicy.RELIABLE
+        mirror_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.create_subscription(
-            Int32, _CONTROLLER_STATE_TOPIC, self._on_controller_state, 10
+            Bool, _MIRROR_MODE_TOPIC, self._on_mirror_mode, mirror_qos
         )
 
         if auto_movej and (fsm_topic or cfg.fsm_topic):
@@ -173,16 +168,10 @@ class DualHandRetargetNode(Node):
             f"lpf={self._cmd_cfg.filter_cutoff_hz}Hz "
             f"timeout={self._cmd_cfg.target_timeout}s"
         )
-        if self._mirror:
-            self.get_logger().warn(
-                "Hand mirror restored ON (optical L→R ctrl, R→L; "
-                "same ATM still in mirror_mode_)"
-            )
-        else:
-            self.get_logger().info(
-                "Hand publish L→L / R→R until event 7 "
-                "(then swap topics; ATM owns EE/trigger)"
-            )
+        self.get_logger().info(
+            f"Hand mirror follows {_MIRROR_MODE_TOPIC} "
+            "(ATM EE/trigger mirror_mode_; no local event-7 toggle)"
+        )
 
     def _on_fsm(self, msg: Int32) -> None:
         was_open, is_open = self._gate.update(int(msg.data))
@@ -209,15 +198,9 @@ class DualHandRetargetNode(Node):
                 f"FSM {msg.data}: command gate closed; controller commands paused"
             )
 
-    def _on_controller_state(self, msg: Int32) -> None:
-        """Event 7: swap finger topics; ATM swaps EE/trigger on the same bus."""
-        if int(msg.data) != _EVENT_MIRROR:
-            return
-        if self._mirror_host is not None:
-            # Host already coalesced pedal/stick; only follow the shared bit.
-            self._sync_mirror_from_host(source="controller_state")
-            return
-        self._toggle_hand_mirror(source="controller_state")
+    def _on_mirror_mode(self, msg: Bool) -> None:
+        """Follow ATM /teleop/mirror_mode level (same bit as EE/trigger)."""
+        self._apply_mirror_level(bool(msg.data), source=_MIRROR_MODE_TOPIC)
 
     def _apply_mirror_level(self, want: bool, *, source: str) -> None:
         """Set mirror level and flush last joints onto the new topic mapping."""
@@ -234,52 +217,26 @@ class DualHandRetargetNode(Node):
         }
         self._mirror = want
         save_mirror(self._mirror)
+        host = self._mirror_host
+        if host is not None and hasattr(host, "set_hand_mirror"):
+            try:
+                host.set_hand_mirror(self._mirror)
+            except Exception:
+                pass
         self._last_sent = {"left": None, "right": None}
         if self._mirror:
             self.get_logger().warn(
-                f"status: event 7 hand mirror ON "
-                f"(optical L→R ctrl, R→L) [{source}]; "
-                "ATM STORAGE edge — re-enter UPDATE to apply EE mirror"
+                f"status: hand mirror ON (optical L→R ctrl, R→L) [{source}]"
             )
         else:
             self.get_logger().warn(
-                f"status: event 7 hand mirror OFF "
-                f"(optical L→L / R→R) [{source}]; "
-                "ATM STORAGE edge — re-enter UPDATE to apply EE mirror"
+                f"status: hand mirror OFF (optical L→L / R→R) [{source}]"
             )
         for side in ("left", "right"):
             q = prev[side]
             if q is None:
                 continue
             self._maybe_publish(side, self._pub_for_optical_side(side), q)
-
-    def _sync_mirror_from_host(self, *, source: str) -> None:
-        if self._mirror_host is None:
-            return
-        want = bool(getattr(self._mirror_host, "hand_mirror", self._mirror))
-        self._apply_mirror_level(want, source=f"{source}/host")
-
-    def _toggle_hand_mirror(self, *, source: str) -> None:
-        """Flip the hand publish latch; debounce + force topic flush.
-
-        Without debounce, pedal and stick (or a repeated bus 7) toggle twice and
-        leave fingers unmirrored while ATM EE is already mirrored. Without
-        flushing ``_last_sent``, identical joint cmds are deduped and the swapped
-        topics keep the pre-mirror hands until the next motion.
-        """
-        now = time.monotonic()
-        mirrored, skip_until, accepted = apply_mirror_toggle(
-            mirrored=self._mirror,
-            skip_until=self._mirror_skip_until,
-            now=now,
-        )
-        if not accepted:
-            self.get_logger().info(
-                f"Hand mirror event 7 ignored ({source}, debounce)"
-            )
-            return
-        self._mirror_skip_until = skip_until
-        self._apply_mirror_level(mirrored, source=source)
 
     def _pub_for_optical_side(self, side: str):
         key = optical_to_publish_side(side, self._mirror)
@@ -326,7 +283,6 @@ class DualHandRetargetNode(Node):
     def step_once(self) -> None:
         """Retarget from the latest cached OpenXR 26 (same tick as wrist EE)."""
         now = time.monotonic()
-        self._sync_mirror_from_host(source="frame")
         if not self._live() or not self._stream_ready():
             self._skip_teleop(now)
             return
@@ -340,7 +296,6 @@ class DualHandRetargetNode(Node):
 
     def _on_timer(self):
         now = time.monotonic()
-        self._sync_mirror_from_host(source="timer")
         if not self._live() or not self._stream_ready():
             self._skip_teleop(now)
             return
