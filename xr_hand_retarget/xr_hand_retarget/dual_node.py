@@ -68,6 +68,7 @@ class DualHandRetargetNode(Node):
         plan: HandPlan | None = None,
         frame_source=None,
         use_timer: bool = True,
+        mirror_host=None,
     ):
         super().__init__(node_name)
         right_cfg = right_cfg or cfg
@@ -81,11 +82,17 @@ class DualHandRetargetNode(Node):
         self._held = {"left": 0, "right": 0}
         self._last_sent = {"left": None, "right": None}
         self._frame_source = frame_source
+        # Event 7: ATM swaps EE/trigger; DualHand swaps finger topic L↔R.
+        # With mirror_host (in-process), follow host.hand_mirror to avoid double toggle.
+        self._mirror_host = mirror_host
         self._cmd_cfg: CommandSafetyConfig = cfg.command or CommandSafetyConfig()
         self._gate = make_fsm_gate(self._cmd_cfg)
         self._last_heartbeat = 0.0
         self._hold_heartbeat_dt = 0.2
-        self._mirror = load_mirror()
+        if mirror_host is not None and hasattr(mirror_host, "hand_mirror"):
+            self._mirror = bool(mirror_host.hand_mirror)
+        else:
+            self._mirror = load_mirror()
         self._mirror_skip_until = 0.0
 
         self._left = SidePipeline("left", cfg, retargeting_type, xrt=xrt)
@@ -168,7 +175,13 @@ class DualHandRetargetNode(Node):
         )
         if self._mirror:
             self.get_logger().warn(
-                "Hand mirror restored ON (same controller still in mirror mode)"
+                "Hand mirror restored ON (optical L→R ctrl, R→L; "
+                "same ATM still in mirror_mode_)"
+            )
+        else:
+            self.get_logger().info(
+                "Hand publish L→L / R→R until event 7 "
+                "(then swap topics; ATM owns EE/trigger)"
             )
 
     def _on_fsm(self, msg: Int32) -> None:
@@ -197,16 +210,60 @@ class DualHandRetargetNode(Node):
             )
 
     def _on_controller_state(self, msg: Int32) -> None:
-        """Toggle hand L/R publish swap with VRInputHandler mirror (event 7)."""
+        """Event 7: swap finger topics; ATM swaps EE/trigger on the same bus."""
         if int(msg.data) != _EVENT_MIRROR:
             return
+        if self._mirror_host is not None:
+            # Host already coalesced pedal/stick; only follow the shared bit.
+            self._sync_mirror_from_host(source="controller_state")
+            return
         self._toggle_hand_mirror(source="controller_state")
+
+    def _apply_mirror_level(self, want: bool, *, source: str) -> None:
+        """Set mirror level and flush last joints onto the new topic mapping."""
+        want = bool(want)
+        if want == self._mirror:
+            return
+        prev = {
+            "left": None
+            if self._last_sent["left"] is None
+            else np.asarray(self._last_sent["left"], dtype=float).copy(),
+            "right": None
+            if self._last_sent["right"] is None
+            else np.asarray(self._last_sent["right"], dtype=float).copy(),
+        }
+        self._mirror = want
+        save_mirror(self._mirror)
+        self._last_sent = {"left": None, "right": None}
+        if self._mirror:
+            self.get_logger().warn(
+                f"status: event 7 hand mirror ON "
+                f"(optical L→R ctrl, R→L) [{source}]; "
+                "ATM STORAGE edge — re-enter UPDATE to apply EE mirror"
+            )
+        else:
+            self.get_logger().warn(
+                f"status: event 7 hand mirror OFF "
+                f"(optical L→L / R→R) [{source}]; "
+                "ATM STORAGE edge — re-enter UPDATE to apply EE mirror"
+            )
+        for side in ("left", "right"):
+            q = prev[side]
+            if q is None:
+                continue
+            self._maybe_publish(side, self._pub_for_optical_side(side), q)
+
+    def _sync_mirror_from_host(self, *, source: str) -> None:
+        if self._mirror_host is None:
+            return
+        want = bool(getattr(self._mirror_host, "hand_mirror", self._mirror))
+        self._apply_mirror_level(want, source=f"{source}/host")
 
     def _toggle_hand_mirror(self, *, source: str) -> None:
         """Flip the hand publish latch; debounce + force topic flush.
 
         Without debounce, pedal and stick (or a repeated bus 7) toggle twice and
-        leave fingers unmirrored while the EE path is already mirrored. Without
+        leave fingers unmirrored while ATM EE is already mirrored. Without
         flushing ``_last_sent``, identical joint cmds are deduped and the swapped
         topics keep the pre-mirror hands until the next motion.
         """
@@ -222,28 +279,7 @@ class DualHandRetargetNode(Node):
             )
             return
         self._mirror_skip_until = skip_until
-        prev = {
-            "left": None
-            if self._last_sent["left"] is None
-            else np.asarray(self._last_sent["left"], dtype=float).copy(),
-            "right": None
-            if self._last_sent["right"] is None
-            else np.asarray(self._last_sent["right"], dtype=float).copy(),
-        }
-        self._mirror = mirrored
-        save_mirror(self._mirror)
-        # Drop dedupe so the post-swap topics get a fresh publish.
-        self._last_sent = {"left": None, "right": None}
-        self.get_logger().warn(
-            f"Hand mirror="
-            f"{'ON (L optical→R ctrl, R→L)' if self._mirror else 'OFF'} "
-            f"[{source}]"
-        )
-        for side in ("left", "right"):
-            q = prev[side]
-            if q is None:
-                continue
-            self._maybe_publish(side, self._pub_for_optical_side(side), q)
+        self._apply_mirror_level(mirrored, source=source)
 
     def _pub_for_optical_side(self, side: str):
         key = optical_to_publish_side(side, self._mirror)
@@ -290,6 +326,7 @@ class DualHandRetargetNode(Node):
     def step_once(self) -> None:
         """Retarget from the latest cached OpenXR 26 (same tick as wrist EE)."""
         now = time.monotonic()
+        self._sync_mirror_from_host(source="frame")
         if not self._live() or not self._stream_ready():
             self._skip_teleop(now)
             return
@@ -303,6 +340,7 @@ class DualHandRetargetNode(Node):
 
     def _on_timer(self):
         now = time.monotonic()
+        self._sync_mirror_from_host(source="timer")
         if not self._live() or not self._stream_ready():
             self._skip_teleop(now)
             return
