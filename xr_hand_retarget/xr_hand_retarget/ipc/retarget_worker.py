@@ -81,25 +81,28 @@ def worker_main(
                 last_seq = seq
                 continue
             left_step = right_step = None
-            if snap["left_valid"]:
-                # Trim padded cols to actual width used by solvers (pose7 ok).
-                j = snap["left_joints"]
-                cols = 7 if j.shape[1] >= 7 else j.shape[1]
-                frame = HandFrame(
-                    side="left",
-                    active=int(snap["left_active"]),
-                    joints26=j[:, :cols].copy(),
-                )
-                left_step = left_pipe.step(frame)
-            if snap["right_valid"]:
-                j = snap["right_joints"]
-                cols = 7 if j.shape[1] >= 7 else j.shape[1]
-                frame = HandFrame(
-                    side="right",
-                    active=int(snap["right_active"]),
-                    joints26=j[:, :cols].copy(),
-                )
-                right_step = right_pipe.step(frame)
+            try:
+                if snap["left_valid"]:
+                    # Trim padded cols to actual width used by solvers (pose7 ok).
+                    j = snap["left_joints"]
+                    cols = 7 if j.shape[1] >= 7 else j.shape[1]
+                    frame = HandFrame(
+                        side="left",
+                        active=int(snap["left_active"]),
+                        joints26=j[:, :cols].copy(),
+                    )
+                    left_step = left_pipe.step(frame)
+                if snap["right_valid"]:
+                    j = snap["right_joints"]
+                    cols = 7 if j.shape[1] >= 7 else j.shape[1]
+                    frame = HandFrame(
+                        side="right",
+                        active=int(snap["right_active"]),
+                        joints26=j[:, :cols].copy(),
+                    )
+                    right_step = right_pipe.step(frame)
+            except KeyboardInterrupt:
+                break
             if left_step is None and right_step is None:
                 last_seq = seq
                 continue
@@ -126,6 +129,8 @@ def worker_main(
                 right_held=right_held,
             )
             last_seq = seq
+    except KeyboardInterrupt:
+        pass
     except Exception:
         traceback.print_exc()
     finally:

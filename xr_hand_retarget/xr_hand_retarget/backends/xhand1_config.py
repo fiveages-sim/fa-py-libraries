@@ -265,10 +265,11 @@ def _parse_vector_config(retargeting: dict[str, Any]) -> VectorRetargetConfig:
 
     return VectorRetargetConfig(
         profile="somehand",
-        temporal_filter_alpha=float(prep.get("temporal_filter_alpha", 0.65)),
+        # Defaults 1.0: shaping belongs on publish LPF (ASYNC_TELEOP P2).
+        temporal_filter_alpha=float(prep.get("temporal_filter_alpha", 1.0)),
         max_iterations=int(solver.get("max_iterations", 40)),
         norm_delta=float(solver.get("norm_delta", 0.001)),
-        output_alpha=float(solver.get("output_alpha", 0.92)),
+        output_alpha=float(solver.get("output_alpha", 1.0)),
         activation_alpha=float(solver.get("activation_alpha", 0.30)),
         warm_start_remap=bool(
             solver.get(
@@ -525,6 +526,7 @@ def load_hand_config(path: str | Path | None = None) -> HandConfig:
         soft_collision=bool(safety.get("soft_collision", True)),  # default ON
         collision=_parse_collision(collision_raw),
         motion=_parse_motion(motion_raw),
+        # Legacy sync-timer only; async publish ignores this (FA_HAND_PUBLISH_HZ).
         rate_hz=float(publish.get("rate_hz", 50.0)),
         use_urdf_limits=use_urdf_limits,
         urdf_path=None if urdf_path in (None, "") else str(urdf_path),

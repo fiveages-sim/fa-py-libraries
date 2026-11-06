@@ -49,7 +49,7 @@ _TELEOP_COMMAND_KEYS = (
     "command_epsilon",
     "target_timeout",
     "require_resync",
-    "command_publish_rate",  # accepted, unused (rate comes from publish.rate_hz)
+    "command_publish_rate",  # accepted, unused (async: FA_HAND_PUBLISH_HZ / 120)
 )
 
 
@@ -198,6 +198,18 @@ class SideCommandSafety:
         target_fresh: bool,
     ) -> np.ndarray:
         """Filter a fresh target, or hold last filtered q when stale/timeout."""
+        target = np.asarray(target, dtype=float).reshape(-1)
+        n = int(self.filter.lower.shape[0])
+        if target.shape[0] != n:
+            # Defensive: shm truncation / backend dof drift must not kill publish.
+            if target.shape[0] > n:
+                target = target[:n]
+            else:
+                pad = np.zeros(n, dtype=float)
+                pad[: target.shape[0]] = target
+                if self.filter.position is not None:
+                    pad[target.shape[0] :] = self.filter.position[target.shape[0] :]
+                target = pad
         if self.filter.position is None:
             self.filter.reset(target)
         if target_fresh:

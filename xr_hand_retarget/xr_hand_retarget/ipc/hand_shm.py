@@ -16,10 +16,10 @@ from multiprocessing import shared_memory
 import numpy as np
 
 MAGIC = b"FAHD"
-VERSION = 1
+VERSION = 2  # bumped: MAX_DOF 16→24 (wuji/linker need ≥20)
 N_JOINTS = 26
 N_COLS = 8  # pad OpenXR rows to 8 floats
-MAX_DOF = 16
+MAX_DOF = 24  # xhand1=12, wuji/linker=20; headroom for larger hands
 
 # Header: magic(4) ver(u32) seq(u64) t(f64) flags(u32) la(i32) ra(i32)
 _IN_HEADER_FMT = "<4sIQdIii"

@@ -4,7 +4,7 @@ Drive modes
 -----------
 * ``timer`` (standalone): rclpy timer calls retarget+publish on one thread.
 * ``async`` + **process** (default teleop): EE process writes hand26 shm;
-  a **spawned** retarget process solves; Thread C publishes @ 250Hz.
+  a **spawned** retarget process solves; Thread C publishes @ 120Hz.
   Retarget CPU/GIL no longer shares the EE process.
 * ``async`` + thread (``FA_HAND_PROCESS=0``): legacy in-process worker.
 
@@ -45,7 +45,7 @@ from xr_hand_retarget.pipeline import (
 )
 
 _MIRROR_MODE_TOPIC = "/teleop/mirror_mode"
-_DEFAULT_PUBLISH_HZ = 250.0
+_DEFAULT_PUBLISH_HZ = 120.0
 _CMD_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
@@ -75,7 +75,8 @@ def _side_limits(pipe: SidePipeline | None, cfg: HandRuntimeConfig) -> np.ndarra
 def _publish_rate_hz() -> float:
     raw = os.environ.get("FA_HAND_PUBLISH_HZ", "").strip()
     if raw:
-        return float(np.clip(float(raw), 150.0, 300.0))
+        # Align with PD ~100Hz: default 120; allow 80–300 for A/B.
+        return float(np.clip(float(raw), 80.0, 300.0))
     return _DEFAULT_PUBLISH_HZ
 
 
@@ -192,7 +193,8 @@ class DualHandRetargetNode(Node):
             fsm_pub.publish(msg)
             self.get_logger().info(f"Sent FSM {cfg.fsm_command} on {topic}")
 
-        rate = max(float(cfg.rate_hz), float(right_cfg.rate_hz))
+        # rate_hz is sync-timer legacy only; async publish uses _publish_hz.
+        rate = max(float(getattr(cfg, "rate_hz", 50.0)), float(getattr(right_cfg, "rate_hz", 50.0)))
         self._rate_hz = max(rate, 1.0)
         self._use_timer = bool(use_timer) and not self._async
         if self._use_timer:
@@ -267,8 +269,10 @@ class DualHandRetargetNode(Node):
             drive = "legacy-ee-frame"
         self.get_logger().info(
             f"dual-hand\n{dump}\n"
-            f"rate_hz(doc)={self._rate_hz} left={self._left_topic} ({cfg.dof}) "
-            f"right={self._right_topic} ({right_cfg.dof}) drive={drive}\n"
+            f"left={self._left_topic} ({cfg.dof}) "
+            f"right={self._right_topic} ({right_cfg.dof}) drive={drive}"
+            + (f" sync_timer={self._rate_hz:.0f}Hz" if self._use_timer else "")
+            + "\n"
             f"command_safety enabled={self._cmd_cfg.enabled} "
             f"publish={self._cmd_cfg.publish_command} "
             f"fsm={list(self._cmd_cfg.allowed_fsm_states)} "
@@ -705,6 +709,12 @@ class DualHandRetargetNode(Node):
             try:
                 self._publish_tick(now=now, dt=dt)
             except Exception as exc:
+                if self._async_stop.is_set():
+                    break
+                msg = str(exc)
+                # Shutdown race: rclpy context already torn down — exit quietly.
+                if "context is invalid" in msg or "rcl_shutdown" in msg:
+                    break
                 self.get_logger().error(f"hand publish failed: {exc}")
             with self._stats_lock:
                 if self._last_publish_mono is not None:

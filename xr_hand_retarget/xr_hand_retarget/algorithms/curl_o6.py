@@ -465,14 +465,14 @@ class O6Backend:
                 in_pinch = abs(j2v - float(g.fk_pinch_j2_index)) <= hw or abs(
                     j2v - float(g.fk_pinch_j2_middle)
                 ) <= hw
-            print(
-                f"[{self.side}] safety dbg "
-                f"mode={getattr(self._motion, 'mode', '?')} "
-                f"j2_raw={float(q_raw[j2]):.3f} j2_cmd={float(q_cmd[j2]):.3f} "
-                f"dfk={dfk} dvel={dvel} cspace_hit={dcs} "
-                f"pinch_slot={int(in_pinch)}",
-                flush=True,
-            )
+            # print(
+            #     f"[{self.side}] safety dbg "
+            #     f"mode={getattr(self._motion, 'mode', '?')} "
+            #     f"j2_raw={float(q_raw[j2]):.3f} j2_cmd={float(q_cmd[j2]):.3f} "
+            #     f"dfk={dfk} dvel={dvel} cspace_hit={dcs} "
+            #     f"pinch_slot={int(in_pinch)}",
+            #     flush=True,
+            # )
         return q_cmd
 
     def set_j2_lock(self, on: bool) -> None:

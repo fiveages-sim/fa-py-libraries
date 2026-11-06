@@ -386,7 +386,8 @@ class WujiBackend:
             q = self._q_hold + np.clip(q - self._q_hold, -self._max_delta, self._max_delta)
         return q
 
-    def step(self, frame) -> SideStep:
+    def step(self, frame, xrt=None, **_kwargs) -> SideStep:
+        """``xrt`` accepted for SidePipeline parity (Linker j2-lock); unused here."""
         from xr_hand_retarget.sources.frame import HandFrame
 
         if not isinstance(frame, HandFrame):

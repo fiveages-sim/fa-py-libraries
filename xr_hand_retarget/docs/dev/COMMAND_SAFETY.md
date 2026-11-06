@@ -2,7 +2,7 @@
 
 `DualHandRetargetNode` 在 retarget 之后、发控制器命令之前走与 teleop_ws 相同的一层。
 
-异步 teleop（`async_pipeline`）下：retarget 在 Thread B 写 `q_target`，**Thread C @ 250Hz** 调 `OnlineCommandFilter` 并发布（禁止 rclpy timer）。见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)。
+异步 teleop（`async_pipeline`）下：retarget 在 Process B 写 `q_target`，**Thread C @ 120Hz**（`FA_HAND_PUBLISH_HZ`）调 `OnlineCommandFilter` 并发布（禁止 rclpy timer）。见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)。
 
 ## 配置位置
 
@@ -37,4 +37,10 @@ safety:
   soft_collision: false
 ```
 
+P2：`safety.alpha` / vector `temporal_filter_alpha` / `output_alpha` 均为 **1.0**（内层不做 EMA）。平滑只走本节 `filter_cutoff_hz` + `max_velocity`（wall dt @ publish）。
+
+内层 `CommandSafety` 的 `dt` 亦为 **wall**（`xhand1_pipeline._wall_dt`）；不再用 `publish.rate_hz`。`motion.*` 默认关时该 dt 几乎只记账；开 URDF 速度后才真正限步。
+
 另有 backend 内 `hold_on_inactive`、`motion.*`（URDF 速度/FK），与上述发布滤波叠加，不互相替代。
+
+activation_alpha（0.30）是约束激活平滑，不是输出塑形，故意保留。

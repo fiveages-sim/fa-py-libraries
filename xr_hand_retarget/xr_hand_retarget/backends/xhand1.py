@@ -17,5 +17,5 @@ class XHand1Backend:
         self.retargeting_type = self._inner.retargeting_type
         self.vector_profile = getattr(self._inner, "vector_profile", "") or ""
 
-    def step(self, frame):
+    def step(self, frame, xrt=None, **_kwargs):
         return self._inner.step(frame)

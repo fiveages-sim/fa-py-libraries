@@ -57,6 +57,13 @@ retargeting:
   type: vector
   profile: somehand
   flexion_scale: 1.0
+  # P2 shaping: inner EMAs off — time constants live only in publish LPF
+  # (safety.command.filter_cutoff_hz). soft_collision stays below.
+  preprocess:
+    temporal_filter_alpha: 1.0
+  solver:
+    output_alpha: 1.0
+    # max_iterations: 40   # backend knob; value unchanged this phase
 
   # Geometric priors (warm-start / T_robot knobs — not per operator)
   finger_chain:
@@ -85,7 +92,7 @@ ros:
   auto_movej: true
 
 safety:
-  alpha: 0.90
+  alpha: 1.0   # no EMA here; publish OnlineCommandFilter owns smoothing
   max_delta_rad: 0.0
   hold_on_inactive: true
   hold_on_zero_pose: true
@@ -107,5 +114,5 @@ safety:
     thumb_priority: true
     on_violation: scale
 
-publish:
-  rate_hz: 50.0
+# publish.rate_hz removed: async teleop publish is FA_HAND_PUBLISH_HZ / 250Hz;
+# CommandSafety uses wall dt. Legacy sync timer still defaults to 50 if unset.

@@ -6,6 +6,7 @@ xrobotoolkit_sdk client can drive both hands.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -17,6 +18,11 @@ from xr_hand_retarget.algorithms.vector_retarget import (
     default_xhand1_vector_config,
 )
 from xr_hand_retarget.backends.xhand1_config import HandConfig
+
+# CommandSafety dt: wall clock, not publish.rate_hz (async publish owns its own dt).
+_DT_FALLBACK = 1.0 / 30.0
+_DT_MIN = 1e-4
+_DT_MAX = 0.1
 
 
 @dataclass
@@ -70,9 +76,9 @@ class SidePipeline:
             collision_gains=cfg.collision,
             max_delta_rad=cfg.max_delta_rad,
             motion=cfg.motion,
-            dt_default=1.0 / max(float(cfg.rate_hz), 1.0),
+            dt_default=_DT_FALLBACK,
         )
-        self._dt = 1.0 / max(float(cfg.rate_hz), 1.0)
+        self._last_mono: float | None = None
         if cfg.motion.enabled:
             lim0 = self.safety.effective_limits[0]
             print(
@@ -92,6 +98,14 @@ class SidePipeline:
             flush=True,
         )
 
+    def _wall_dt(self) -> float:
+        now = time.monotonic()
+        prev = self._last_mono
+        self._last_mono = now
+        if prev is None:
+            return _DT_FALLBACK
+        return float(np.clip(now - prev, _DT_MIN, _DT_MAX))
+
     def step(self, frame=None) -> SideStep:
         from xr_hand_retarget.sources.frame import HandFrame
         from xr_hand_retarget.sources.xrt import read_hand_frame
@@ -102,6 +116,7 @@ class SidePipeline:
             frame = read_hand_frame(self._xrt, self.side)
         if not isinstance(frame, HandFrame):
             raise TypeError(f"expected HandFrame, got {type(frame)!r}")
+        dt = self._wall_dt()
         active = int(frame.active)
         raw = frame.ensure_joints26()
         invalid = (self.cfg.hold_on_inactive and active == 0) or (
@@ -118,7 +133,7 @@ class SidePipeline:
                 thumb_tip=self.cfg.thumb_tip,
                 index_abduction=self.cfg.index_abduction,
             )
-            q_cmd = self.safety.step(q_raw, dt=self._dt)
+            q_cmd = self.safety.step(q_raw, dt=dt)
             held = False
         return SideStep(q=q_cmd, active=active, held=held, xyz_abs=float(frame.xyz_abs))
 

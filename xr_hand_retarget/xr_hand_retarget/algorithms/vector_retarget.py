@@ -183,10 +183,10 @@ class VectorRetargetConfig:
     """SomeHand-like solver knobs + constraints; optional DexPilot profile."""
 
     profile: str = "somehand"  # somehand | dexpilot
-    temporal_filter_alpha: float = 0.65
+    temporal_filter_alpha: float = 1.0  # 1.0 = off; publish LPF owns smoothing
     max_iterations: int = 40
     norm_delta: float = 0.001
-    output_alpha: float = 0.92
+    output_alpha: float = 1.0  # 1.0 = off; publish LPF owns smoothing
     activation_alpha: float = 0.30
     fd_eps: float = 1e-4
     warm_start_remap: bool = True
@@ -243,10 +243,10 @@ def default_xhand1_vector_config() -> VectorRetargetConfig:
 def default_xhand1_dexpilot_config(
     gains: DexPilotGains | None = None,
     *,
-    temporal_filter_alpha: float = 0.65,
+    temporal_filter_alpha: float = 1.0,
     max_iterations: int = 50,
     norm_delta: float = 0.004,
-    output_alpha: float = 0.5,
+    output_alpha: float = 1.0,
     warm_start_remap: bool = True,
     urdf_path: str | None = None,
     vector_constraints: list[VectorConstraint] | None = None,

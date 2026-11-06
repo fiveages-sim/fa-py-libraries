@@ -48,11 +48,8 @@ class SidePipeline:
 
             frame = read_hand_frame(self._xrt, self.side)
         # Linker may poll controller buttons via optional xrt kwarg.
-        try:
-            out = self._backend.step(frame, xrt=self._xrt)
-        except TypeError:
-            out = self._backend.step(frame)
-        return out
+        # Backends that ignore xrt still accept it (no TypeError fallback needed).
+        return self._backend.step(frame, xrt=self._xrt)
 
     def set_j2_lock(self, on: bool) -> None:
         fn = getattr(self._backend, "set_j2_lock", None)
