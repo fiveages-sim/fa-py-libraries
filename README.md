@@ -42,6 +42,8 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 ## 快速开始
 
+现场安装步骤见 [INSTALL.md](INSTALL.md)。
+
 ### 1) 初始化（默认按 `.fa-env.toml` 的 backend）
 
 ```bash
@@ -56,6 +58,7 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
    - `ros2_robot_interface`
    - `ros2-viser`
    - `vr_pose_publisher`
+   - `xr_hand_retarget`
 
 ### 2) 启动
 

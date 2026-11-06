@@ -14,3 +14,9 @@ joint_records/
 
 # VR 遥操 ros2 bag 录制
 xr_bags/
+
+__pycache__/
+*.py[cod]
+
+# Local hand retarget test overlays (not shipped)
+xr_hand_retarget/configs/tests/

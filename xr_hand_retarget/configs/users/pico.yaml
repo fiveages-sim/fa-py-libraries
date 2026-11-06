@@ -1,0 +1,180 @@
+# Human VR features (curl / pack_h / pack_r / thumb_az / nest_lat / slot_t).
+# Not raw OpenXR 26, not robot q.
+# Robot workspace: configs/hands/{o6,l6,o7}.yaml
+# schema: linkerhand_o6_palm_tip.v5
+# Poses: open / fist(指尖扣掌) / good / along / pinch×4.
+# Recapture: python -m xr_hand_retarget.calibrate --config configs/o7.yaml
+# source_side=left|right on the hand index yaml.
+schema: linkerhand_o6_palm_tip.v5
+source: xrobotoolkit
+headset: pico
+sides:
+  left:
+    open:
+      index_curl: 0.334291772800432
+      middle_curl: 0.4172858811381346
+      ring_curl: 0.2975769883379593
+      pinky_curl: 0.20038593825036832
+      thumb_curl: 0.17222218455261418
+      thumb_az: -0.9927191557842071
+      thumb_h: 0.35552530809516386
+      index_pack_h: -0.0033274624199341246
+      middle_pack_h: 0.25332842264365285
+      ring_pack_h: 0.21454577336331526
+      pinky_pack_h: 0.2892232488921044
+      index_pack_r: 0.8471198513989653
+      middle_pack_r: 0.8945464315909261
+      ring_pack_r: 0.7643743739503377
+      pinky_pack_r: 0.6708759049822547
+    fist:
+      index_curl: 1.5970449741636954
+      middle_curl: 1.6220474122618185
+      ring_curl: 1.624984269190907
+      pinky_curl: 1.557360033468211
+      thumb_curl: 0.8479047607928278
+      index_pack_h: 0.5772731642593182
+      middle_pack_h: 0.5557744696928469
+      ring_pack_h: 0.49503066564587217
+      pinky_pack_h: 0.3573765418749458
+      index_pack_r: 0.5856619830845275
+      middle_pack_r: 0.611887497095158
+      ring_pack_r: 0.6766374838672534
+      pinky_pack_r: 0.7534673284721313
+    thumb_along:
+      thumb_az: -0.5846340876164182
+      nest_lat: -1.0912826158293407
+      slot_t: -1.8127610131685303
+      nest_r: 1.1436452470696694
+    pinch:
+      skipped: false
+      index:
+        thumb_az: -0.285218816607023
+        thumb_curl: 0.5818463977707964
+        finger_curl: 0.28480630539609786
+        nest_lat: -0.1476011568825368
+        slot_t: 1.144241810294182
+        nest_r: 1.0081989431672689
+        pack_h: 0.3693522310608194
+        pack_r: 0.993459116047758
+      middle:
+        thumb_az: -0.09016241362646657
+        thumb_curl: 0.6691713670254837
+        finger_curl: 0.5243869777328571
+        nest_lat: 0.10495326978760806
+        slot_t: 1.0883297801116996
+        nest_r: 0.7641181925135205
+        pack_h: 0.7477629565636323
+        pack_r: 0.9077770480567333
+      ring:
+        thumb_az: 0.1339425774635117
+        thumb_curl: 0.7666789816385955
+        finger_curl: 0.5565807737773216
+        nest_lat: 0.26815627998091607
+        slot_t: 1.252312094056484
+        nest_r: 0.7787388163740137
+        pack_h: 0.717197531098662
+        pack_r: 0.7225438806952506
+      pinky:
+        thumb_az: 0.13335929423812945
+        thumb_curl: 0.7485373004729574
+        finger_curl: 1.073343988595858
+        nest_lat: 0.24100252605771616
+        slot_t: 1.166635599634238
+        nest_r: 0.8281418780448048
+        pack_h: 0.8381353771031692
+        pack_r: 0.8326684744960325
+    good:
+      index_curl: 0.3549108957121163
+      middle_curl: 1.0448480191951037
+      ring_curl: 0.948642436351961
+      pinky_curl: 0.8286276831224686
+      thumb_curl: 0.16066806791332788
+    thumb_up:
+      thumb_h: 0.5239323377612104
+    thumb_to_middle:
+      thumb_az: -0.09016241362646657
+  right:
+    open:
+      index_curl: 0.334291772800432
+      middle_curl: 0.4172858811381346
+      ring_curl: 0.2975769883379593
+      pinky_curl: 0.20038593825036832
+      thumb_curl: 0.17222218455261418
+      thumb_az: 0.9927191557842071
+      thumb_h: 0.35552530809516386
+      index_pack_h: -0.0033274624199341246
+      middle_pack_h: 0.25332842264365285
+      ring_pack_h: 0.21454577336331526
+      pinky_pack_h: 0.2892232488921044
+      index_pack_r: 0.8471198513989653
+      middle_pack_r: 0.8945464315909261
+      ring_pack_r: 0.7643743739503377
+      pinky_pack_r: 0.6708759049822547
+    fist:
+      index_curl: 1.5970449741636954
+      middle_curl: 1.6220474122618185
+      ring_curl: 1.624984269190907
+      pinky_curl: 1.557360033468211
+      thumb_curl: 0.8479047607928278
+      index_pack_h: 0.5772731642593182
+      middle_pack_h: 0.5557744696928469
+      ring_pack_h: 0.49503066564587217
+      pinky_pack_h: 0.3573765418749458
+      index_pack_r: 0.5856619830845275
+      middle_pack_r: 0.611887497095158
+      ring_pack_r: 0.6766374838672534
+      pinky_pack_r: 0.7534673284721313
+    thumb_along:
+      thumb_az: 0.5846340876164182
+      nest_lat: -1.0912826158293407
+      slot_t: -1.8127610131685303
+      nest_r: 1.1436452470696694
+    pinch:
+      skipped: false
+      index:
+        thumb_az: 0.285218816607023
+        thumb_curl: 0.5818463977707964
+        finger_curl: 0.28480630539609786
+        nest_lat: -0.1476011568825368
+        slot_t: 1.144241810294182
+        nest_r: 1.0081989431672689
+        pack_h: 0.3693522310608194
+        pack_r: 0.993459116047758
+      middle:
+        thumb_az: 0.09016241362646657
+        thumb_curl: 0.6691713670254837
+        finger_curl: 0.5243869777328571
+        nest_lat: 0.10495326978760806
+        slot_t: 1.0883297801116996
+        nest_r: 0.7641181925135205
+        pack_h: 0.7477629565636323
+        pack_r: 0.9077770480567333
+      ring:
+        thumb_az: -0.1339425774635117
+        thumb_curl: 0.7666789816385955
+        finger_curl: 0.5565807737773216
+        nest_lat: 0.26815627998091607
+        slot_t: 1.252312094056484
+        nest_r: 0.7787388163740137
+        pack_h: 0.717197531098662
+        pack_r: 0.7225438806952506
+      pinky:
+        thumb_az: -0.13335929423812945
+        thumb_curl: 0.7485373004729574
+        finger_curl: 1.073343988595858
+        nest_lat: 0.24100252605771616
+        slot_t: 1.166635599634238
+        nest_r: 0.8281418780448048
+        pack_h: 0.8381353771031692
+        pack_r: 0.8326684744960325
+    good:
+      index_curl: 0.3549108957121163
+      middle_curl: 1.0448480191951037
+      ring_curl: 0.948642436351961
+      pinky_curl: 0.8286276831224686
+      thumb_curl: 0.16066806791332788
+    thumb_up:
+      thumb_h: 0.5239323377612104
+    thumb_to_middle:
+      thumb_az: 0.09016241362646657
+    mirrored_from: left

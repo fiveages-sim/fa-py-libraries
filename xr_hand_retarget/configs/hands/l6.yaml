@@ -1,0 +1,70 @@
+# L6 robot workspace + semantics. Same map as O6, shorter limits / L6 pinch_q.
+# Human curl (PalmTip): linker.user → calib/l6.yaml
+#
+# 食指捏合: j1=0.7, j2=1.2, index=0.52
+# 中指单独够不着（j2 上限 1.39）；二指+拇指:
+#   j1=0.7, j2=1.39, index=0.52, middle=0.6
+
+retargeting:
+  curl:
+    output_alpha: 0.85
+    thumb_alpha: 0.70
+    finger_alpha: 0.88
+    neighbor_soft: 0.12
+    workspace:
+      thumb_joint2:
+        index: 1.2
+        middle: 1.39
+        along: 0.22
+        along_fade: 0.12
+        pinch_halfwidth: 0.25
+      closed_reach_t: 0.85
+      pinch_knot_max_t: 0.92
+      nest:
+        r_near: 0.32
+        r_far: 1.15
+        curl_span: 0.08
+        lat_along: 0.42
+        lat_opp: -0.02
+      pinch_q:
+        index:
+          thumb_joint1: 0.7
+          index_joint: 0.52
+        middle:
+          thumb_joint1: 0.7
+          index_joint: 0.52
+          middle_joint: 0.6
+        ring:
+          ring_joint: 0.52
+        pinky:
+          pinky_joint: 0.52
+    attract:
+      enabled: true
+    fist_envelope:
+      enabled: true
+      fingers: [index, middle]
+      finger_t: 0.92
+      j2_split: 0.85
+      j1_roof: 0.8
+
+safety:
+  velocity:
+    enabled: true
+    use_urdf: false
+    per_joint: [1.5, 3.5, 1.2, 1.2, 1.2, 1.2]
+  position:
+    fk:
+      pack_j2_min: 0.75
+      pack_finger_min: 0.55
+      along_j2: 0.35
+      fist_finger_min: 0.90
+      hold_fingers_until_thumb_out: true
+      pinch_clearance_m: 0.006
+      sphere_radius_m: 0.006
+      pack_clearance_m: 0.020
+      pinch_j2:
+        index: 1.2
+        middle: 1.39
+        halfwidth: 0.25
+      cspace:
+        enabled: false

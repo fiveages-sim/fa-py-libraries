@@ -1,0 +1,28 @@
+# Standard hand (Wuji-21 / MediaPipe order). Fixed proportions — not a person, not a robot.
+# T_person (users/*.yaml) maps a live operator onto this; T_robot (hands/*.yaml) maps
+# this onto a device. Units: meters. Rest pose: open palm, wrist at origin, +Z out of palm.
+#
+# Point index (MediaPipe):
+#   0 wrist
+#   1–4  thumb CMC→TIP
+#   5–8  index MCP→TIP
+#   9–12 middle
+#   13–16 ring
+#   17–20 pinky
+
+schema: fa_standard_hand.v1
+
+# Mean adult proportions (relative); scale_m sets absolute wrist→middle-MCP length.
+scale_m: 0.095
+
+# Bone lengths as fraction of scale_m (parent → child).
+bones:
+  thumb:  [0.40, 0.32, 0.28]   # CMC→MCP, MCP→IP, IP→TIP
+  index:  [0.48, 0.28, 0.22]   # MCP→PIP, PIP→DIP, DIP→TIP
+  middle: [0.52, 0.30, 0.22]
+  ring:   [0.48, 0.28, 0.22]
+  pinky:  [0.40, 0.24, 0.20]
+
+# Rest xyz (21,3) in wrist frame when scale_m applied; optional seed for tools.
+# If omitted, FK from bones + open-palm layout is used by loaders.
+rest_xyz: null

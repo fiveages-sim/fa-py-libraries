@@ -1,0 +1,208 @@
+# Human VR features (curl / pack_h / pack_r / thumb_az / nest_lat / slot_t).
+# Not raw OpenXR 26, not robot q.
+# Robot workspace: configs/hands/{o6,l6,o7}.yaml
+# schema: linkerhand_o6_palm_tip.v5
+# Poses: open / together(合掌) / fist / good / along / pinch×4.
+# Recapture: python -m xr_hand_retarget.calibrate --config configs/l6.yaml
+# source_side=left|right on the hand index yaml.
+schema: linkerhand_o6_palm_tip.v5
+source: xrobotoolkit
+headset: pico
+sides:
+  left:
+    open:
+      index_curl: 0.03405518072128855
+      middle_curl: 0.0285360723832091
+      ring_curl: 0.0693937121136392
+      pinky_curl: 0.05846325495422722
+      thumb_curl: 0.12487634890984411
+      thumb_az: -1.0134354242641237
+      thumb_h: 0.35692607706826884
+      index_pack_h: -0.01678270143531626
+      middle_pack_h: -0.09480320026153549
+      ring_pack_h: 0.08303637188893583
+      pinky_pack_h: 0.31666827384647034
+      index_pack_r: 1.43153007097907
+      middle_pack_r: 1.4883953913764967
+      ring_pack_r: 1.345041013121109
+      pinky_pack_r: 1.2550130220181122
+    fist:
+      index_curl: 0.9727292097997415
+      middle_curl: 0.7681549727543333
+      ring_curl: 0.6939376375658473
+      pinky_curl: 0.7533829675000392
+      thumb_curl: 1.120942528619686
+      index_pack_h: 0.589043075295979
+      middle_pack_h: 0.5928016270905131
+      ring_pack_h: 0.5239058644398615
+      pinky_pack_h: 0.3783950634789375
+      index_pack_r: 0.40001703003141487
+      middle_pack_r: 0.37868924014113203
+      ring_pack_r: 0.44389915266189095
+      pinky_pack_r: 0.5727824289839472
+    thumb_along:
+      thumb_az: -0.587934202084188
+      nest_lat: -0.9742523879848008
+      slot_t: -1.6305805214314915
+      nest_r: 1.0545534267081278
+    pinch:
+      skipped: false
+      index:
+        thumb_az: -0.6629956303135013
+        thumb_curl: 0.9474150386104312
+        finger_curl: 0.5678681008102409
+        nest_lat: -0.42139993483837357
+        slot_t: -0.3797070924209489
+        nest_r: 0.9571828642615102
+        pack_h: 0.9149926823344304
+        pack_r: 0.2950125956431478
+      middle:
+        thumb_az: -0.2649215462378232
+        thumb_curl: 0.7197725966061057
+        finger_curl: 0.4860002645344277
+        nest_lat: -0.1570246365585435
+        slot_t: 1.5828685697605511
+        nest_r: 0.9988457621041753
+        pack_h: 1.0421755582393568
+        pack_r: 0.12970416682945682
+      ring:
+        thumb_az: -0.048354318614229994
+        thumb_curl: 0.7374005895074824
+        finger_curl: 0.3688848104488045
+        nest_lat: 0.10359393237038551
+        slot_t: 1.1185192165105426
+        nest_r: 0.7136270508809678
+        pack_h: 0.9404936365928273
+        pack_r: 0.3046923495490484
+      pinky:
+        thumb_az: 0.09341393360791006
+        thumb_curl: 0.7562567110485077
+        finger_curl: 0.411113073084481
+        nest_lat: 0.2579166165490458
+        slot_t: 1.2245348815393189
+        nest_r: 0.8240640850437445
+        pack_h: 0.8136142570967703
+        pack_r: 0.3852449062010657
+    together:
+      index_curl: 0.030353990443116707
+      middle_curl: 0.03283063328493929
+      ring_curl: 0.06847891455127009
+      pinky_curl: 0.005935563030495139
+      thumb_curl: 0.1256039108064717
+      thumb_az: -1.082284070078512
+      thumb_h: 0.3373564153294477
+      index_pack_h: 0.01399525296918575
+      middle_pack_h: 0.16976864525961957
+      ring_pack_h: 0.09296640258508126
+      pinky_pack_h: 0.19306312549990143
+      index_pack_r: 1.2837460743723383
+      middle_pack_r: 1.488181072684381
+      ring_pack_r: 1.3511968417893687
+      pinky_pack_r: 1.0788737595429803
+    good:
+      index_curl: 0.8966161865686073
+      middle_curl: 0.946609967843232
+      ring_curl: 0.7334963004212394
+      pinky_curl: 0.8134385190925393
+      thumb_curl: 0.029371522122311644
+    thumb_to_middle:
+      thumb_az: -0.2649215462378232
+  right:
+    open:
+      index_curl: 0.03405518072128855
+      middle_curl: 0.0285360723832091
+      ring_curl: 0.0693937121136392
+      pinky_curl: 0.05846325495422722
+      thumb_curl: 0.12487634890984411
+      thumb_az: 1.0134354242641237
+      thumb_h: 0.35692607706826884
+      index_pack_h: -0.01678270143531626
+      middle_pack_h: -0.09480320026153549
+      ring_pack_h: 0.08303637188893583
+      pinky_pack_h: 0.31666827384647034
+      index_pack_r: 1.43153007097907
+      middle_pack_r: 1.4883953913764967
+      ring_pack_r: 1.345041013121109
+      pinky_pack_r: 1.2550130220181122
+    fist:
+      index_curl: 0.9727292097997415
+      middle_curl: 0.7681549727543333
+      ring_curl: 0.6939376375658473
+      pinky_curl: 0.7533829675000392
+      thumb_curl: 1.120942528619686
+      index_pack_h: 0.589043075295979
+      middle_pack_h: 0.5928016270905131
+      ring_pack_h: 0.5239058644398615
+      pinky_pack_h: 0.3783950634789375
+      index_pack_r: 0.40001703003141487
+      middle_pack_r: 0.37868924014113203
+      ring_pack_r: 0.44389915266189095
+      pinky_pack_r: 0.5727824289839472
+    thumb_along:
+      thumb_az: 0.587934202084188
+      nest_lat: -0.9742523879848008
+      slot_t: -1.6305805214314915
+      nest_r: 1.0545534267081278
+    pinch:
+      skipped: false
+      index:
+        thumb_az: 0.6629956303135013
+        thumb_curl: 0.9474150386104312
+        finger_curl: 0.5678681008102409
+        nest_lat: -0.42139993483837357
+        slot_t: -0.3797070924209489
+        nest_r: 0.9571828642615102
+        pack_h: 0.9149926823344304
+        pack_r: 0.2950125956431478
+      middle:
+        thumb_az: 0.2649215462378232
+        thumb_curl: 0.7197725966061057
+        finger_curl: 0.4860002645344277
+        nest_lat: -0.1570246365585435
+        slot_t: 1.5828685697605511
+        nest_r: 0.9988457621041753
+        pack_h: 1.0421755582393568
+        pack_r: 0.12970416682945682
+      ring:
+        thumb_az: 0.048354318614229994
+        thumb_curl: 0.7374005895074824
+        finger_curl: 0.3688848104488045
+        nest_lat: 0.10359393237038551
+        slot_t: 1.1185192165105426
+        nest_r: 0.7136270508809678
+        pack_h: 0.9404936365928273
+        pack_r: 0.3046923495490484
+      pinky:
+        thumb_az: -0.09341393360791006
+        thumb_curl: 0.7562567110485077
+        finger_curl: 0.411113073084481
+        nest_lat: 0.2579166165490458
+        slot_t: 1.2245348815393189
+        nest_r: 0.8240640850437445
+        pack_h: 0.8136142570967703
+        pack_r: 0.3852449062010657
+    together:
+      index_curl: 0.030353990443116707
+      middle_curl: 0.03283063328493929
+      ring_curl: 0.06847891455127009
+      pinky_curl: 0.005935563030495139
+      thumb_curl: 0.1256039108064717
+      thumb_az: 1.082284070078512
+      thumb_h: 0.3373564153294477
+      index_pack_h: 0.01399525296918575
+      middle_pack_h: 0.16976864525961957
+      ring_pack_h: 0.09296640258508126
+      pinky_pack_h: 0.19306312549990143
+      index_pack_r: 1.2837460743723383
+      middle_pack_r: 1.488181072684381
+      ring_pack_r: 1.3511968417893687
+      pinky_pack_r: 1.0788737595429803
+    good:
+      index_curl: 0.8966161865686073
+      middle_curl: 0.946609967843232
+      ring_curl: 0.7334963004212394
+      pinky_curl: 0.8134385190925393
+      thumb_curl: 0.029371522122311644
+    thumb_to_middle:
+      thumb_az: 0.2649215462378232
+    mirrored_from: left

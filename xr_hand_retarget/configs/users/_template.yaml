@@ -1,0 +1,17 @@
+# Example T_person overlay (operator → standard hand).
+# Curl pose endpoints still live in calib/*.yaml / users/pico.yaml — those are
+# also "user files". This template is for official Wuji person scale only.
+#
+# Copy to users/<your_id>.yaml and point local.yaml hands.user: <your_id>
+
+schema: fa_person.v1
+
+person:
+  bone_scale: 1.0
+  # Optional: overrides hands/wuji.yaml segment_scaling for this operator.
+  # segment_scaling:
+  #   thumb:  [1.0, 1.0, 1.0]
+  #   index:  [1.0, 1.0, 1.0]
+  #   middle: [1.0, 1.0, 1.0]
+  #   ring:   [1.0, 1.0, 1.0]
+  #   pinky:  [1.0, 1.0, 1.0]

@@ -1,0 +1,84 @@
+# XHand1 curl calibration (OpenXR 26 xyz).
+# schema: xhand1_curl_calib.v3
+# open=伸直(拇指与掌垂直)→q0; fist=握拳四指→限位;
+# thumb_to_pinky=对掌到小指侧;
+# pinch=可选，拇指到各指下方；thumb_joint1 由 URDF 指槽反求.
+# Recapture: python -m xr_hand_retarget.calibrate --side full
+schema: xhand1_curl_calib.v3
+source: xrobotoolkit
+headset: pico
+sides:
+  left:
+    open:
+      index_mcp: 0.2533983135997002
+      index_pip: 0.01830224550808963
+      middle_mcp: 0.2605033910067358
+      middle_pip: 0.050422984844231994
+      ring_mcp: 0.11189006977568239
+      ring_pip: 0.039676487589374164
+      pinky_mcp: 0.06121361477764875
+      pinky_pip: 0.0625113791218821
+      thumb_mcp: 0.05925127192756774
+      thumb_ip: 0.18156586578013822
+      thumb_lat: -0.08332801356727002
+    fist:
+      index_mcp: 1.2479422996451774
+      index_pip: 1.4270421407633656
+      middle_mcp: 1.3984638827942406
+      middle_pip: 1.3700481834881866
+      ring_mcp: 1.451549077204201
+      ring_pip: 1.323832295941023
+      pinky_mcp: 1.2680304698469398
+      pinky_pip: 1.3793931917383306
+    thumb_to_pinky:
+      thumb_lat: 0.020865535130946765
+    thumb_flex:
+      mcp: 1.1
+      ip: 1.05
+    pinch:
+      skipped: false
+      index:
+        thumb_lat: -0.017708303322227763
+      middle:
+        thumb_lat: -0.0009529342896668052
+      ring:
+        thumb_lat: 0.016632975498638156
+      pinky:
+        thumb_lat: 0.02119793334261154
+  right:
+    open:
+      index_mcp: 0.4128059836984499
+      index_pip: 0.08736372997774214
+      middle_mcp: 0.5312944825613446
+      middle_pip: 0.14330827523743842
+      ring_mcp: 0.36232193395074574
+      ring_pip: 0.13029518102584625
+      pinky_mcp: 0.27819446242787427
+      pinky_pip: 0.12000232340436189
+      thumb_mcp: 0.0950103087131069
+      thumb_ip: 0.0712024844845498
+      thumb_lat: 0.07346109486905605
+    fist:
+      index_mcp: 1.111401635506719
+      index_pip: 1.3521333946551808
+      middle_mcp: 1.370794748487726
+      middle_pip: 1.3647040423458914
+      ring_mcp: 1.4216601279266656
+      ring_pip: 1.3178183444362925
+      pinky_mcp: 1.221906084712303
+      pinky_pip: 1.3692992883191988
+    thumb_to_pinky:
+      thumb_lat: -0.025485084047506865
+    thumb_flex:
+      mcp: 1.1
+      ip: 1.05
+    pinch:
+      skipped: false
+      index:
+        thumb_lat: 0.008099762056875865
+      middle:
+        thumb_lat: -0.005009640070633871
+      ring:
+        thumb_lat: -0.016333355302776797
+      pinky:
+        thumb_lat: -0.023122164217232326

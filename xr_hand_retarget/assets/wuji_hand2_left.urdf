@@ -1,0 +1,264 @@
+<?xml version="1.0"?>
+<!-- Kinematics-only Hand 2 (no meshes). From wuji_description xacro/hand2.xacro. -->
+<robot name="wuji_hand2_left">
+  <link name="hand_base">
+      </link>
+  <joint name="wrist_align" type="fixed">
+    <origin xyz="0 0 0" rpy="3.14159265359 0 0" />
+    <parent link="hand_base" />
+    <child link="wrist" />
+  </joint>
+  <link name="wrist">
+      </link>
+  <link name="thumb_proximal">
+      </link>
+  <joint name="thumb_cmc_flex" type="revolute">
+    <origin xyz="0.017208 -0.008138 -0.01646" rpy="1.6615 -1.0591 -1.9919" />
+    <parent link="wrist" />
+    <child link="thumb_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.1870" upper="1.2910" effort="0.6000" velocity="8.587" />
+  </joint>
+  <link name="thumb_proximal_abd">
+      </link>
+  <joint name="thumb_cmc_abd" type="revolute">
+    <origin xyz="0.00025789 0.00063167 -0.014161" rpy="-0.20529 0.70051 -0.025238" />
+    <parent link="thumb_proximal" />
+    <child link="thumb_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.4840" upper="0.6980" effort="0.6000" velocity="11.1" />
+  </joint>
+  <link name="thumb_middle">
+      </link>
+  <joint name="thumb_mcp" type="revolute">
+    <origin xyz="-4.313646061e-05 2.49048674496e-05 -0.0334956422241" rpy="0 0.0872664625997 -0.523598775598" />
+    <parent link="thumb_proximal_abd" />
+    <child link="thumb_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="0.3000" velocity="12.86" />
+  </joint>
+  <link name="thumb_distal">
+      </link>
+  <joint name="thumb_ip" type="revolute">
+    <origin xyz="0 0 -0.035" rpy="0 0 0" />
+    <parent link="thumb_middle" />
+    <child link="thumb_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="0.3000" velocity="13.5" />
+  </joint>
+  <link name="thumb_tip" />
+  <joint name="thumb_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.029787" rpy="0 0 0" />
+    <parent link="thumb_distal" />
+    <child link="thumb_tip" />
+  </joint>
+  <link name="thumb_tip_sensor_frame">
+      </link>
+  <joint name="thumb_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="thumb_distal" />
+    <child link="thumb_tip_sensor_frame" />
+  </joint>
+  <link name="index_finger_proximal">
+      </link>
+  <joint name="index_finger_mcp_flex" type="revolute">
+    <origin xyz="0.0226524150577 0.00332515884505 -0.0699780241478" rpy="0.0397801377023 -0.136929341253 -0.10040392464" />
+    <parent link="wrist" />
+    <child link="index_finger_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="2.0000" velocity="8.203" />
+  </joint>
+  <link name="index_finger_proximal_abd">
+      </link>
+  <joint name="index_finger_mcp_abd" type="revolute">
+    <origin xyz="0 0.00120098019222 -0.0144999999838" rpy="0 0 0" />
+    <parent link="index_finger_proximal" />
+    <child link="index_finger_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.6980" upper="0.6980" effort="0.2000" velocity="8.11" />
+  </joint>
+  <link name="index_finger_middle">
+      </link>
+  <joint name="index_finger_pip" type="revolute">
+    <origin xyz="0 0 -0.0376" rpy="0 0 0" />
+    <parent link="index_finger_proximal_abd" />
+    <child link="index_finger_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="2.0940" effort="0.3000" velocity="12.86" />
+  </joint>
+  <link name="index_finger_distal">
+      </link>
+  <joint name="index_finger_dip" type="revolute">
+    <origin xyz="0 0 -0.0295" rpy="0 0 0" />
+    <parent link="index_finger_middle" />
+    <child link="index_finger_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="0.3000" velocity="13.5" />
+  </joint>
+  <link name="index_finger_tip" />
+  <joint name="index_finger_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.02475" rpy="0 0 0" />
+    <parent link="index_finger_distal" />
+    <child link="index_finger_tip" />
+  </joint>
+  <link name="index_finger_tip_sensor_frame">
+      </link>
+  <joint name="index_finger_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="index_finger_distal" />
+    <child link="index_finger_tip_sensor_frame" />
+  </joint>
+  <link name="middle_finger_proximal">
+      </link>
+  <joint name="middle_finger_mcp_flex" type="revolute">
+    <origin xyz="0.000943093646039 0.00830301349135 -0.0739154421481" rpy="0.0339135947071 0.0111579717229 0.000715284906568" />
+    <parent link="wrist" />
+    <child link="middle_finger_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="2.0000" velocity="8.203" />
+  </joint>
+  <link name="middle_finger_proximal_abd">
+      </link>
+  <joint name="middle_finger_mcp_abd" type="revolute">
+    <origin xyz="0 0.00120098019222 -0.0144999999838" rpy="0 0 0" />
+    <parent link="middle_finger_proximal" />
+    <child link="middle_finger_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.6980" upper="0.6980" effort="0.2000" velocity="8.11" />
+  </joint>
+  <link name="middle_finger_middle">
+      </link>
+  <joint name="middle_finger_pip" type="revolute">
+    <origin xyz="0 0 -0.0376" rpy="0 0 0" />
+    <parent link="middle_finger_proximal_abd" />
+    <child link="middle_finger_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="2.0940" effort="0.3000" velocity="12.86" />
+  </joint>
+  <link name="middle_finger_distal">
+      </link>
+  <joint name="middle_finger_dip" type="revolute">
+    <origin xyz="0 0 -0.0295" rpy="0 0 0" />
+    <parent link="middle_finger_middle" />
+    <child link="middle_finger_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="0.3000" velocity="13.5" />
+  </joint>
+  <link name="middle_finger_tip" />
+  <joint name="middle_finger_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.02475" rpy="0 0 0" />
+    <parent link="middle_finger_distal" />
+    <child link="middle_finger_tip" />
+  </joint>
+  <link name="middle_finger_tip_sensor_frame">
+      </link>
+  <joint name="middle_finger_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="middle_finger_distal" />
+    <child link="middle_finger_tip_sensor_frame" />
+  </joint>
+  <link name="ring_proximal">
+      </link>
+  <joint name="ring_mcp_flex" type="revolute">
+    <origin xyz="-0.019752 0.0055929 -0.065397" rpy="0.016663 0.14175 0.068321" />
+    <parent link="wrist" />
+    <child link="ring_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="2.0000" velocity="8.203" />
+  </joint>
+  <link name="ring_proximal_abd">
+      </link>
+  <joint name="ring_mcp_abd" type="revolute">
+    <origin xyz="0 0.00120098019222 -0.0144999999838" rpy="0 0 0" />
+    <parent link="ring_proximal" />
+    <child link="ring_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.6980" upper="0.6980" effort="0.2000" velocity="8.11" />
+  </joint>
+  <link name="ring_middle">
+      </link>
+  <joint name="ring_pip" type="revolute">
+    <origin xyz="0 0 -0.0376" rpy="0 0 0" />
+    <parent link="ring_proximal_abd" />
+    <child link="ring_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="2.0940" effort="0.3000" velocity="12.86" />
+  </joint>
+  <link name="ring_distal">
+      </link>
+  <joint name="ring_dip" type="revolute">
+    <origin xyz="0 0 -0.0295" rpy="0 0 0" />
+    <parent link="ring_middle" />
+    <child link="ring_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="0.3000" velocity="13.5" />
+  </joint>
+  <link name="ring_tip" />
+  <joint name="ring_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.02475" rpy="0 0 0" />
+    <parent link="ring_distal" />
+    <child link="ring_tip" />
+  </joint>
+  <link name="ring_tip_sensor_frame">
+      </link>
+  <joint name="ring_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="ring_distal" />
+    <child link="ring_tip_sensor_frame" />
+  </joint>
+  <link name="pinky_proximal">
+      </link>
+  <joint name="pinky_mcp_flex" type="revolute">
+    <origin xyz="-0.0373572872886 0.000733759922595 -0.0552917010368" rpy="0.00981701706873 0.24897582673 0.13602514716" />
+    <parent link="wrist" />
+    <child link="pinky_proximal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="2.0000" velocity="8.203" />
+  </joint>
+  <link name="pinky_proximal_abd">
+      </link>
+  <joint name="pinky_mcp_abd" type="revolute">
+    <origin xyz="0 0.00120098026251 -0.0145000000236" rpy="0 0 0" />
+    <parent link="pinky_proximal" />
+    <child link="pinky_proximal_abd" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.6980" upper="0.6980" effort="0.2000" velocity="8.11" />
+  </joint>
+  <link name="pinky_middle">
+      </link>
+  <joint name="pinky_pip" type="revolute">
+    <origin xyz="-9.9999999999e-05 0 -0.0336" rpy="0 0 0" />
+    <parent link="pinky_proximal_abd" />
+    <child link="pinky_middle" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="2.0940" effort="0.3000" velocity="12.86" />
+  </joint>
+  <link name="pinky_distal">
+      </link>
+  <joint name="pinky_dip" type="revolute">
+    <origin xyz="0 0 -0.0275" rpy="0 0 0" />
+    <parent link="pinky_middle" />
+    <child link="pinky_distal" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-1.0470" upper="1.5700" effort="0.3000" velocity="13.5" />
+  </joint>
+  <link name="pinky_tip" />
+  <joint name="pinky_tip_fixed" type="fixed">
+    <origin xyz="0 0 -0.02475" rpy="0 0 0" />
+    <parent link="pinky_distal" />
+    <child link="pinky_tip" />
+  </joint>
+  <link name="pinky_tip_sensor_frame">
+      </link>
+  <joint name="pinky_tip_sensor_frame_fixed" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="pinky_distal" />
+    <child link="pinky_tip_sensor_frame" />
+  </joint>
+  <link name="eef" />
+  <joint name="eef_joint" type="fixed">
+    <origin xyz="0 0 0.07" rpy="0 0 0" />
+    <parent link="hand_base" />
+    <child link="eef" />
+  </joint>
+</robot>
