@@ -1,17 +1,17 @@
-# Layer 1 — this machine (copy to local.yaml; gitignored).
+# =============================================================================
+# User layer (本机唯一操作员入口) — copy to configs/local.yaml (gitignored)
+# =============================================================================
+# Product defaults live in xr_hand_retarget/configs/<hand>.yaml + hands/*.yaml.
+# Dev-only env (do NOT put here): FA_FRAME_GATE_HZ, FA_HAND_SWITCH_INTERVAL,
+# FA_HAND_PROCESS. FA_HAND_PUBLISH_HZ overrides teleop.publish_hz when set.
 #
-# VR 手柄 / 光学腕：vr_pose_publisher/configs/xrt_teleop.yaml
-# 本文件：选手型 + 可选发布安全（键名对齐 teleop_ws launch）。
-#
-# 手型 → 算法（method 可省略；写错会被忽略并告警）：
-#   xhand1     → vector
-#   o6|l6|o7   → curl
-#   wuji       → official
+# Whitelist only — anything else belongs in product/dev layers.
+# =============================================================================
 
 hands:
   source: xrt          # xrt（默认）| replay | …
   type: xhand1         # xhand1 | wuji | o6 | l6 | o7
-  # method: vector     # 可省略
+  # method: vector     # 可省略；手型锁定算法
   # user: pico         # Linker → linker.user；Wuji → users/<id>.yaml
 
 # Per-side（可选）:
@@ -21,25 +21,34 @@ hands:
 #   type: o7
 
 # ---------------------------------------------------------------------------
-# 发布路径安全 — 键名与 teleop_ws dexcap_hand_retarget.launch.py 相同
-# （也可写在 hands.command / 各手型 yaml 的 safety.command；此处覆盖默认）
+# teleop — async publish + preset pointer（不复制整份 xrt_teleop.yaml）
 # ---------------------------------------------------------------------------
-# command:
-#   publish_command: true
-#   max_velocity: 6.0          # rad/s；xhand1=6 / linker=4 / wuji=1.5
-#   filter_cutoff_hz: 8.0
-#   command_epsilon: 0.001
-#   target_timeout: 0.25
-#   allowed_fsm_states: [3, 4] # OCS2, MOVEJ
-#   # enabled: false           # 关掉整层 FSM+LPF+限速
+teleop:
+  publish_hz: 120        # q_des 匀发；对齐 PD~100Hz。env FA_HAND_PUBLISH_HZ 优先
+  retarget_hz: 80        # Process B 求解上限（xhand 驱动~83Hz）。FA_HAND_RETARGET_HZ 优先
+  # max_iterations: 25   # 可选；压 vector L-BFGS。FA_HAND_MAX_ITER 优先；默认 yaml=40
+  # ee_source: wrist     # 文档指针：wrist|controller|hand（实际仍用 ./run.sh 参数）
+
+# ---------------------------------------------------------------------------
+# command — 顺畅度主旋钮（OnlineCommandFilter）。键名 = teleop_ws launch
+# 勿在 hands/*.yaml 里改本机体感；库默认在索引 yaml → safety.command
+# ---------------------------------------------------------------------------
+command:
+  publish_command: true
+  max_velocity: 6.0          # rad/s；xhand1 默认 6 / linker 4 / wuji 1.5
+  filter_cutoff_hz: 10.0     # 顺畅度起点（库默认 8）；A/B 见 docs/user/SMOOTHNESS.md
+  command_epsilon: 0.001
+  target_timeout: 0.25
+  allowed_fsm_states: [3, 4] # OCS2, MOVEJ
+  # enabled: false           # 关掉整层 FSM+LPF+限速
 
 # XHand1 soft self-collision（可选；默认开）
 # safety:
-#   soft_collision: true       # false 关闭
+#   soft_collision: true
 
 # ---------------------------------------------------------------------------
 # 跑：
-#   Linker / XHand1：./run.sh vr-xrt wrist
-#   临时换手：FA_HAND=o6 ./run.sh vr-xrt wrist
-#   Wuji：python -m xr_hand_retarget --config xr_hand_retarget/configs/wuji_hand2.yaml --side right
+#   ./run.sh vr-xrt wrist
+#   FA_HAND=o6 ./run.sh vr-xrt wrist
+#   python3 scripts/teleop_probe.py --sec 5 --csv /tmp/hand.csv
 # ---------------------------------------------------------------------------

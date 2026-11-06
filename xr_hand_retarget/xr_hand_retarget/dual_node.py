@@ -72,11 +72,13 @@ def _side_limits(pipe: SidePipeline | None, cfg: HandRuntimeConfig) -> np.ndarra
     return np.stack([-np.pi * np.ones(n), np.pi * np.ones(n)], axis=1)
 
 
-def _publish_rate_hz() -> float:
+def _publish_rate_hz(local_default: float | None = None) -> float:
+    """Priority: FA_HAND_PUBLISH_HZ env > local.yaml teleop.publish_hz > 120."""
     raw = os.environ.get("FA_HAND_PUBLISH_HZ", "").strip()
     if raw:
-        # Align with PD ~100Hz: default 120; allow 80–300 for A/B.
         return float(np.clip(float(raw), 80.0, 300.0))
+    if local_default is not None:
+        return float(np.clip(float(local_default), 80.0, 300.0))
     return _DEFAULT_PUBLISH_HZ
 
 
@@ -129,6 +131,7 @@ class DualHandRetargetNode(Node):
         self._gate = make_fsm_gate(self._cmd_cfg)
         self._mirror = False
         self._plan_kwargs = dict(plan_kwargs or {})
+        self._hand_plan = plan
 
         self._async = bool(async_pipeline)
         self._process_retarget = bool(
@@ -141,6 +144,17 @@ class DualHandRetargetNode(Node):
         if not self._process_retarget:
             self._left = SidePipeline("left", cfg, retargeting_type, xrt=xrt)
             self._right = SidePipeline("right", right_cfg, right_retargeting, xrt=xrt)
+            from xr_hand_retarget.ipc.worker_budget import (
+                apply_vector_max_iterations,
+                max_iterations_from_env,
+            )
+
+            max_iter = max_iterations_from_env(
+                getattr(plan, "max_iterations", None) if plan is not None else None
+            )
+            if max_iter is not None:
+                apply_vector_max_iterations(self._left, max_iter)
+                apply_vector_max_iterations(self._right, max_iter)
         self._xrt = xrt
         suffix = cfg.topic_suffix
         self._left_topic = command_topic(left_controller, suffix)
@@ -211,7 +225,8 @@ class DualHandRetargetNode(Node):
         self._q_target_seq: dict[str, int] = {"left": 0, "right": 0}
         self._q_target_fresh: dict[str, bool] = {"left": False, "right": False}
         self._q_des: dict[str, np.ndarray | None] = {"left": None, "right": None}
-        self._publish_hz = _publish_rate_hz()
+        local_pub = getattr(plan, "publish_hz", None) if plan is not None else None
+        self._publish_hz = _publish_rate_hz(local_pub)
         self._align_log_path = os.environ.get("FA_HAND_ALIGN_LOG", "").strip()
         self._align_fp = None
         self._align_writer = None
@@ -474,14 +489,25 @@ class DualHandRetargetNode(Node):
             daemon=True,
         )
         self._worker_proc.start()
+        from xr_hand_retarget.ipc.worker_budget import retarget_hz_from_env
+
+        rhz = retarget_hz_from_env(
+            getattr(self._hand_plan, "retarget_hz", None)
+            if self._hand_plan is not None
+            else None
+        )
         self.get_logger().info(
             f"hand retarget process pid={self._worker_proc.pid} "
-            f"shm_in={self._shm.in_name} shm_out={self._shm.out_name}"
+            f"retarget_hz={rhz:g} shm_in={self._shm.in_name} shm_out={self._shm.out_name}"
         )
 
     def stop_async(self) -> None:
         if not self._async:
             return
+        try:
+            self.get_logger().info("async hand: stopping publish + retarget worker")
+        except Exception:
+            pass
         self._async_stop.set()
         self._sample_event.set()
         self._target_updated.set()
@@ -490,14 +516,14 @@ class DualHandRetargetNode(Node):
         if self._mp_sample_event is not None:
             self._mp_sample_event.set()
         if self._worker_proc is not None:
-            self._worker_proc.join(timeout=3.0)
+            self._worker_proc.join(timeout=2.0)
             if self._worker_proc.is_alive():
                 self._worker_proc.terminate()
                 self._worker_proc.join(timeout=1.0)
             self._worker_proc = None
         for th in (self._worker_thread, self._publish_thread):
             if th is not None and th.is_alive():
-                th.join(timeout=2.0)
+                th.join(timeout=1.5)
         self._worker_thread = None
         self._publish_thread = None
         if self._shm is not None:
@@ -508,7 +534,14 @@ class DualHandRetargetNode(Node):
                 pass
             self._shm = None
         self._close_align_log()
-        self._log_async_stats()
+        try:
+            self._log_async_stats()
+        except Exception:
+            pass
+        try:
+            self.get_logger().info("async hand: stopped")
+        except Exception:
+            pass
 
     def destroy_node(self) -> bool:
         try:
@@ -628,6 +661,16 @@ class DualHandRetargetNode(Node):
     # ----- in-process worker (FA_HAND_PROCESS=0) -----
 
     def _worker_loop(self) -> None:
+        from xr_hand_retarget.ipc.worker_budget import retarget_hz_from_env
+
+        hz = retarget_hz_from_env(
+            getattr(self._hand_plan, "retarget_hz", None)
+            if self._hand_plan is not None
+            else None
+        )
+        min_period = 1.0 / hz
+        next_solve_t = 0.0
+        self.get_logger().info(f"hand thread-retarget rate cap={hz:g}Hz")
         while not self._async_stop.is_set():
             self._sample_event.wait(timeout=0.05)
             if self._async_stop.is_set():
@@ -635,10 +678,14 @@ class DualHandRetargetNode(Node):
             self._sample_event.clear()
             while self._sample_event.is_set():
                 self._sample_event.clear()
+            now = time.monotonic()
+            if now < next_solve_t:
+                continue
             try:
                 self._worker_once()
             except Exception as exc:
                 self.get_logger().error(f"hand worker failed: {exc}")
+            next_solve_t = now + min_period
 
     def _worker_once(self) -> None:
         if self._left is None or self._right is None:

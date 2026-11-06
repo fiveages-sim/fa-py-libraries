@@ -80,6 +80,11 @@ class HandPlan:
     source: Path | None
     input_source: str = "xrt"  # local.yaml hands.source (xrt | replay | …)
     user: str | None = None
+    # User-layer teleop knobs (configs/local.yaml → teleop:).
+    publish_hz: float | None = None  # async q_des rate; FA_HAND_PUBLISH_HZ wins if set
+    retarget_hz: float | None = None  # Process B solve cap; FA_HAND_RETARGET_HZ wins
+    max_iterations: int | None = None  # vector L-BFGS cap; FA_HAND_MAX_ITER wins
+    ee_source: str | None = None  # wrist|controller pointer (run preset; not full XRT copy)
 
     def for_side(self, side: str) -> SidePlan:
         if side == "left":
@@ -254,6 +259,36 @@ def format_resolved(left: SidePlan | SideSpec, right: SidePlan | SideSpec) -> st
     return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
 
 
+def _lookup_teleop(raw: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    block = raw.get("teleop")
+    return block if isinstance(block, dict) else {}
+
+
+def parse_user_teleop(
+    raw: dict[str, Any] | None,
+) -> tuple[float | None, float | None, int | None, str | None]:
+    """Read local.yaml ``teleop:`` → publish_hz, retarget_hz, max_iterations, ee_source."""
+    teleop = _lookup_teleop(raw)
+    publish_hz = None
+    if teleop.get("publish_hz") not in (None, ""):
+        publish_hz = float(teleop["publish_hz"])
+    retarget_hz = None
+    if teleop.get("retarget_hz") not in (None, ""):
+        retarget_hz = float(teleop["retarget_hz"])
+    max_iterations = None
+    if teleop.get("max_iterations") not in (None, ""):
+        max_iterations = int(teleop["max_iterations"])
+    ee_source = None
+    raw_ee = teleop.get("ee_source")
+    if raw_ee not in (None, ""):
+        ee_source = str(raw_ee).strip().lower()
+        if ee_source not in ("wrist", "controller", "hand"):
+            ee_source = None
+    return publish_hz, retarget_hz, max_iterations, ee_source
+
+
 def _apply_local_overrides(cfg: HandRuntimeConfig, raw: dict[str, Any]) -> None:
     """Apply teleop_ws-style operator knobs from configs/local.yaml."""
     from xr_hand_retarget.control.command_safety import (
@@ -287,12 +322,17 @@ def _plan_from_specs(
             _apply_local_overrides(cfg, local_raw)
         return SidePlan(spec=spec, cfg=cfg)
 
+    publish_hz, retarget_hz, max_iterations, ee_source = parse_user_teleop(local_raw)
     return HandPlan(
         left=_one(left),
         right=_one(right),
         source=source,
         input_source=(input_source or "xrt").strip().lower() or "xrt",
         user=user,
+        publish_hz=publish_hz,
+        retarget_hz=retarget_hz,
+        max_iterations=max_iterations,
+        ee_source=ee_source,
     )
 
 
@@ -353,6 +393,14 @@ def print_plan(plan: HandPlan, *, stream=None) -> None:
     extra = f" input={plan.input_source}"
     if plan.user:
         extra += f" user={plan.user}"
+    if plan.publish_hz is not None:
+        extra += f" publish_hz={plan.publish_hz:g}"
+    if plan.retarget_hz is not None:
+        extra += f" retarget_hz={plan.retarget_hz:g}"
+    if plan.max_iterations is not None:
+        extra += f" max_iter={plan.max_iterations}"
+    if plan.ee_source:
+        extra += f" ee_source={plan.ee_source}"
     print(f"[local.yaml] file={src}{extra}", flush=True, file=stream)
     print(text, flush=True, file=stream)
 

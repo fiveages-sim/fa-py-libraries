@@ -81,5 +81,4 @@ safety:
   mesh:
     enabled: false
 
-publish:
-  rate_hz: 50.0
+# publish.rate_hz retired (async uses local teleop.publish_hz / FA_HAND_PUBLISH_HZ).

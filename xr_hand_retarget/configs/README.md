@@ -3,9 +3,11 @@
 完整说明见 [docs/dev/CONFIG.md](../docs/dev/CONFIG.md)。
 
 ```
-standard_hand.yaml     T_standard
-users/* + calib/*      T_person（curl 也算 user）
-hands/*                T_robot
-{o6,l6,o7,wuji_hand2,xhand1}.yaml   索引
-仓库 configs/local.yaml             source + user + type + method
+仓库 configs/local.yaml             User 白名单（type / command / teleop）
+{o6,l6,o7,wuji_hand2,xhand1}.yaml   Product 索引 + 库默认 safety.command
+hands/*                             T_robot
+users/* + calib/*                   T_person
+standard_hand.yaml                  T_standard
 ```
+
+本机体感只改 `configs/local.yaml`（模板：`configs/local.yaml.example`）。

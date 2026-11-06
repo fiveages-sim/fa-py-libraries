@@ -2,13 +2,15 @@
 
 `DualHandRetargetNode` 在 retarget 之后、发控制器命令之前走与 teleop_ws 相同的一层。
 
-异步 teleop（`async_pipeline`）下：retarget 在 Process B 写 `q_target`，**Thread C @ 120Hz**（`FA_HAND_PUBLISH_HZ`）调 `OnlineCommandFilter` 并发布（禁止 rclpy timer）。见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)。
+异步 teleop（`async_pipeline`）下：retarget 在 Process B 写 `q_target`，**Thread C @ publish_hz**（local `teleop.publish_hz` / `FA_HAND_PUBLISH_HZ` / 默认 120）调 `OnlineCommandFilter` 并发布（禁止 rclpy timer）。见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)。
 
 ## 配置位置
 
-1. **本机覆盖（推荐）**：`configs/local.yaml` 顶层 `command:` — 键名与 `dexcap_hand_retarget.launch.py` 相同  
-2. 手型索引：`configs/<hand>.yaml` → `safety.command`  
+1. **本机（用户层，推荐）**：`configs/local.yaml` → `command:` + `teleop.publish_hz`  
+2. 手型索引（库默认）：`configs/<hand>.yaml` → `safety.command` — **勿当本机体感入口**  
 3. 兼容：`hands.command` / `safety.command`（见 `extract_local_command_block`）
+
+顺畅度标定：[../user/SMOOTHNESS.md](../user/SMOOTHNESS.md)。
 
 | 机制 | 键 | teleop_ws |
 |------|-----|-----------|

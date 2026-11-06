@@ -37,7 +37,9 @@ Process A — EE
 
 Process B — hand retarget（multiprocessing spawn）
   等 Event → 读 shm hand26 → SidePipeline L/R → 写 shm q_target
-  不 xrt.init()；无 ROS；drop-old
+  解算限频默认 **80Hz**（`teleop.retarget_hz` / `FA_HAND_RETARGET_HZ`）；中间帧 drop-old
+  BLAS/OpenMP **1 线程**；默认同绑最后 2 核（`FA_HAND_WORKER_CPUS`）
+  不 xrt.init()；无 ROS
 ```
 
 回退线程版（调试）：`FA_HAND_PROCESS=0 ./run.sh vr-xrt wrist`
@@ -59,7 +61,7 @@ GIL：默认 `setswitchinterval(0.0005)`；A/B 用 `FA_HAND_SWITCH_INTERVAL=0.00
 
 | 红线 | 约束 |
 |------|------|
-| 不改映射算法 | 不动 `VectorRetargeter` / `kinematics_xhand1.py` / 算法 yaml 块。可动：外层塑形、`_dt`、publish/QoS、线程编排。`max_iterations` 值本版不动 |
+| 不改映射算法 | 不动约束/运动学公式。可动：解算限频、BLAS 线程、可选 `max_iterations`（`FA_HAND_MAX_ITER` / local） |
 | 不改坐标轴/变换 | 轴序/符号/`openxr_to_robot`/yaw/palm_to_grip **原样**。软 clamp/跳变 hold **默认关**（光学跳变正常；开 hold 会冻 EE）。EE 热路径无 scipy（`so3_numpy`） |
 | 握手信号不变 | 不动 `isActive` 语义、gate∈{3,4} 的 `_live()`、`hold_on_inactive` |
 | 同帧对齐 | 命令仍是 `Float64MultiArray`（无 header）。`frame_seq` 走侧信道 CSV（`FA_HAND_ALIGN_LOG`） |
@@ -122,6 +124,11 @@ temporal_filter_alpha 1.0 → output_alpha 1.0 → safety.alpha 1.0 → outer LP
 | P2 / P2.1 | EMA→1.0；内层 wall dt；删 `publish.rate_hz` | 已做 |
 | P3 | max_iter 口子（若仍需） | 后续 |
 
-Env：`FA_FRAME_GATE_HZ`（默认 3000）、`FA_HAND_PUBLISH_HZ`（默认 120）、`FA_HAND_SWITCH_INTERVAL`（默认 0.0005）、`FA_HAND_PROCESS`。
+发布节拍：`FA_HAND_PUBLISH_HZ` → `teleop.publish_hz` → 120。  
+解算节拍：`FA_HAND_RETARGET_HZ` → `teleop.retarget_hz` → **80**（对齐 xhand ~83Hz 驱动）。  
+Worker CPU：`OMP/OPENBLAS_NUM_THREADS` 默认 1；`FA_HAND_WORKER_CPUS`（默认末 2 核）。  
+可选：`FA_HAND_MAX_ITER` / `teleop.max_iterations`。  
+其它 Dev：`FA_FRAME_GATE_HZ`、`FA_HAND_SWITCH_INTERVAL`、`FA_HAND_PROCESS`。  
+用户层：[CONFIG.md](CONFIG.md)；顺畅度：[../user/SMOOTHNESS.md](../user/SMOOTHNESS.md)。
 
 探针：`python3 scripts/teleop_probe.py --sec 5 --csv /tmp/test_{controller,nohand,hand}.csv`

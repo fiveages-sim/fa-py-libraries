@@ -72,5 +72,4 @@ safety:
     target_timeout: 0.25
     require_resync: true
 
-publish:
-  rate_hz: 50.0
+# publish.rate_hz retired (async uses local teleop.publish_hz / FA_HAND_PUBLISH_HZ).

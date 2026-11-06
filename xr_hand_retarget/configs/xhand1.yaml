@@ -9,14 +9,14 @@ backend: xhand1
 xhand1:
   config: hands/xhand1.yaml
 
-# Publish-path safety (teleop_ws DexCap). Override from configs/local.yaml → command:
+# Library defaults for OnlineCommandFilter. Machine feel → configs/local.yaml command:
 safety:
   command:
     enabled: true
     publish_command: true
     allowed_fsm_states: [3, 4]
     max_velocity: 6.0
-    filter_cutoff_hz: 8.0
+    filter_cutoff_hz: 8.0   # local.example recommends 10 for smoothness A/B
     command_epsilon: 0.001
     target_timeout: 0.25
     require_resync: true

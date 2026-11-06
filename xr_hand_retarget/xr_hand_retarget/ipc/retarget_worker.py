@@ -1,6 +1,9 @@
 """Retarget subprocess: read hand26 shm → SidePipeline → write q_target shm.
 
 No SDK init. No ROS. Spawned by DualHandRetargetNode when process isolation is on.
+
+Budget (xhand-first): solve ≤ FA_HAND_RETARGET_HZ (default 80); BLAS threads=1;
+optional CPU pin to last 2 cores so EE / ros2_control keep headroom.
 """
 
 from __future__ import annotations
@@ -29,9 +32,33 @@ def worker_main(
     left_retargeting: str | None,
     right_retargeting: str | None,
 ) -> None:
+    # Parent owns Ctrl+C; ignore SIGINT so spawn re-import / solve isn't noisy.
+    try:
+        import signal
+
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    except Exception:
+        pass
+
+    # Before any numpy/scipy import: clamp OpenBLAS/OpenMP (≈1 core).
+    for key in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+    ):
+        os.environ.setdefault(key, "1")
+
     _ensure_import_path()
     try:
         from xr_hand_retarget.ipc.hand_shm import HandShmBundle
+        from xr_hand_retarget.ipc.worker_budget import (
+            apply_vector_max_iterations,
+            max_iterations_from_env,
+            pin_worker_cpus,
+            retarget_hz_from_env,
+        )
         from xr_hand_retarget.local_profile import load_hand_plan
         from xr_hand_retarget.pipeline import SidePipeline
         from xr_hand_retarget.sources.frame import HandFrame
@@ -39,6 +66,7 @@ def worker_main(
         traceback.print_exc()
         return
 
+    pinned = pin_worker_cpus()
     shm = HandShmBundle.attach(in_shm_name, out_shm_name)
     try:
         plan = load_hand_plan(**plan_kwargs)
@@ -54,10 +82,21 @@ def worker_main(
             right_retargeting or plan.right.retargeting_type,
             xrt=None,
         )
+        max_iter = max_iterations_from_env(getattr(plan, "max_iterations", None))
+        if max_iter is not None:
+            for pipe in (left_pipe, right_pipe):
+                apply_vector_max_iterations(pipe, max_iter)
+
+        hz = retarget_hz_from_env(getattr(plan, "retarget_hz", None))
+        min_period = 1.0 / hz
+        next_solve_t = 0.0
         print(
             f"[hand-worker] pid={os.getpid()} "
             f"L={plan.left.cfg.backend}/{left_pipe.retargeting_type} "
-            f"R={plan.right.cfg.backend}/{right_pipe.retargeting_type}",
+            f"R={plan.right.cfg.backend}/{right_pipe.retargeting_type} "
+            f"retarget_hz={hz:g} blas_threads=1 "
+            f"cpus={pinned if pinned is not None else 'all'} "
+            f"max_iter={max_iter if max_iter is not None else 'yaml'}",
             flush=True,
         )
         last_seq = -1
@@ -65,7 +104,6 @@ def worker_main(
             sample_event.wait(timeout=0.05)
             if stop_event.is_set():
                 break
-            # Drop-old: consume event; always read latest shm snapshot.
             while sample_event.is_set():
                 sample_event.clear()
             try:
@@ -77,13 +115,18 @@ def worker_main(
             if seq == last_seq:
                 continue
             if not snap["live"]:
-                # Gate closed: do not burn CPU; parent keeps last q_target.
                 last_seq = seq
                 continue
+
+            now = time.monotonic()
+            if now < next_solve_t:
+                # Drop-old ack: publish LPF keeps last q_target (soft "interpolation").
+                last_seq = seq
+                continue
+
             left_step = right_step = None
             try:
                 if snap["left_valid"]:
-                    # Trim padded cols to actual width used by solvers (pose7 ok).
                     j = snap["left_joints"]
                     cols = 7 if j.shape[1] >= 7 else j.shape[1]
                     frame = HandFrame(
@@ -111,15 +154,11 @@ def worker_main(
             left_held = right_held = False
             if left_step is not None:
                 left_held = bool(left_step.held)
-                # Always publish a seed q even when held (parent may have empty target).
                 left_q = left_step.q
             if right_step is not None:
                 right_held = bool(right_step.held)
                 right_q = right_step.q
 
-            # For held: parent decides whether to keep previous target; we still
-            # write the held q so first-frame seed works. Parent marks fresh only
-            # when not held (see DualHandRetargetNode._ingest_worker_output).
             shm.write_output(
                 frame_seq=seq,
                 t_mono=time.monotonic(),
@@ -129,6 +168,7 @@ def worker_main(
                 right_held=right_held,
             )
             last_seq = seq
+            next_solve_t = now + min_period
     except KeyboardInterrupt:
         pass
     except Exception:
