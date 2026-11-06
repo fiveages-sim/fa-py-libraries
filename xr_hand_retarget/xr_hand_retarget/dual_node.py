@@ -1,12 +1,29 @@
-"""ROS2 node: one SDK client → left + right hand joint commands."""
+"""ROS2 node: one SDK client → left + right hand joint commands.
+
+Drive modes
+-----------
+* ``timer`` (standalone): rclpy timer calls retarget+publish on one thread.
+* ``async`` + **process** (default teleop): EE process writes hand26 shm;
+  a **spawned** retarget process solves; Thread C publishes @ 250Hz.
+  Retarget CPU/GIL no longer shares the EE process.
+* ``async`` + thread (``FA_HAND_PROCESS=0``): legacy in-process worker.
+
+See ``docs/dev/ASYNC_TELEOP.md``.
+"""
 
 from __future__ import annotations
 
+import csv
+import multiprocessing as mp
+import os
+import threading
 import time
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, Float64MultiArray, Int32
 
 from xr_hand_retarget.config import HandRuntimeConfig
@@ -28,21 +45,43 @@ from xr_hand_retarget.pipeline import (
 )
 
 _MIRROR_MODE_TOPIC = "/teleop/mirror_mode"
+_DEFAULT_PUBLISH_HZ = 250.0
+_CMD_QOS = QoSProfile(
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.VOLATILE,
+)
 
 
-def _side_limits(pipe: SidePipeline, cfg: HandRuntimeConfig) -> np.ndarray:
+def _side_limits(pipe: SidePipeline | None, cfg: HandRuntimeConfig) -> np.ndarray:
+    if pipe is not None:
+        if cfg.xhand1 is not None:
+            return np.asarray(cfg.xhand1.limits, dtype=float)
+        backend = getattr(pipe, "_backend", None)
+        for attr in ("limits", "_limits"):
+            lim = getattr(backend, attr, None)
+            if lim is not None:
+                return np.asarray(lim, dtype=float)
+        inner = getattr(backend, "_inner", None)
+        if inner is not None and hasattr(inner, "limits"):
+            return np.asarray(inner.limits, dtype=float)
     if cfg.xhand1 is not None:
         return np.asarray(cfg.xhand1.limits, dtype=float)
-    backend = getattr(pipe, "_backend", None)
-    for attr in ("limits", "_limits"):
-        lim = getattr(backend, attr, None)
-        if lim is not None:
-            return np.asarray(lim, dtype=float)
-    inner = getattr(backend, "_inner", None)
-    if inner is not None and hasattr(inner, "limits"):
-        return np.asarray(inner.limits, dtype=float)
     n = int(cfg.dof)
     return np.stack([-np.pi * np.ones(n), np.pi * np.ones(n)], axis=1)
+
+
+def _publish_rate_hz() -> float:
+    raw = os.environ.get("FA_HAND_PUBLISH_HZ", "").strip()
+    if raw:
+        return float(np.clip(float(raw), 150.0, 300.0))
+    return _DEFAULT_PUBLISH_HZ
+
+
+def _want_process_retarget() -> bool:
+    raw = os.environ.get("FA_HAND_PROCESS", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off", "thread")
 
 
 class DualHandRetargetNode(Node):
@@ -65,6 +104,9 @@ class DualHandRetargetNode(Node):
         plan: HandPlan | None = None,
         frame_source=None,
         use_timer: bool = True,
+        async_pipeline: bool = False,
+        process_retarget: bool | None = None,
+        plan_kwargs: dict[str, Any] | None = None,
         mirror_host=None,
     ):
         super().__init__(node_name)
@@ -74,28 +116,42 @@ class DualHandRetargetNode(Node):
         )
         self._cfg = cfg
         self._right_cfg = right_cfg
+        self._left_rtype = retargeting_type
+        self._right_rtype = right_retargeting
         self._print_every = float(print_every)
         self._last_print = 0.0
         self._held = {"left": 0, "right": 0}
         self._last_sent = {"left": None, "right": None}
         self._frame_source = frame_source
-        # ATM publishes /teleop/mirror_mode (same bit as EE/trigger). Follow level.
         self._mirror_host = mirror_host
         self._cmd_cfg: CommandSafetyConfig = cfg.command or CommandSafetyConfig()
         self._gate = make_fsm_gate(self._cmd_cfg)
-        self._last_heartbeat = 0.0
-        self._hold_heartbeat_dt = 0.2
         self._mirror = False
+        self._plan_kwargs = dict(plan_kwargs or {})
 
-        self._left = SidePipeline("left", cfg, retargeting_type, xrt=xrt)
-        self._right = SidePipeline("right", right_cfg, right_retargeting, xrt=xrt)
+        self._async = bool(async_pipeline)
+        self._process_retarget = bool(
+            self._async
+            and (process_retarget if process_retarget is not None else _want_process_retarget())
+        )
+        # Parent keeps SidePipeline only when retarget runs in-process.
+        self._left: SidePipeline | None = None
+        self._right: SidePipeline | None = None
+        if not self._process_retarget:
+            self._left = SidePipeline("left", cfg, retargeting_type, xrt=xrt)
+            self._right = SidePipeline("right", right_cfg, right_retargeting, xrt=xrt)
         self._xrt = xrt
         suffix = cfg.topic_suffix
         self._left_topic = command_topic(left_controller, suffix)
         self._right_topic = command_topic(right_controller, suffix)
-        self._pub_left = self.create_publisher(Float64MultiArray, self._left_topic, 10)
-        self._pub_right = self.create_publisher(Float64MultiArray, self._right_topic, 10)
-        wire_j2_lock_sub(self, {"left": self._left, "right": self._right})
+        self._pub_left = self.create_publisher(
+            Float64MultiArray, self._left_topic, _CMD_QOS
+        )
+        self._pub_right = self.create_publisher(
+            Float64MultiArray, self._right_topic, _CMD_QOS
+        )
+        if self._left is not None and self._right is not None:
+            wire_j2_lock_sub(self, {"left": self._left, "right": self._right})
         self._stream_movej = None
         if cfg.stream_movej or right_cfg.stream_movej:
             self._stream_movej = StreamMoveJSession(
@@ -138,52 +194,111 @@ class DualHandRetargetNode(Node):
 
         rate = max(float(cfg.rate_hz), float(right_cfg.rate_hz))
         self._rate_hz = max(rate, 1.0)
-        self._min_step_dt = 1.0 / self._rate_hz
-        self._last_step = 0.0
-        self._use_timer = use_timer
-        if use_timer:
-            self.create_timer(self._min_step_dt, self._on_timer)
-        self._rtype = self._left.retargeting_type
+        self._use_timer = bool(use_timer) and not self._async
+        if self._use_timer:
+            self.create_timer(1.0 / self._rate_hz, self._on_timer)
+
+        self._async_lock = threading.Lock()
+        self._sample_event = threading.Event()
+        self._target_updated = threading.Event()
+        self._async_stop = threading.Event()
+        self._worker_thread: threading.Thread | None = None
+        self._publish_thread: threading.Thread | None = None
+        self._frame_seq = 0
+        self._q_target: dict[str, np.ndarray | None] = {"left": None, "right": None}
+        self._q_target_seq: dict[str, int] = {"left": 0, "right": 0}
+        self._q_target_fresh: dict[str, bool] = {"left": False, "right": False}
+        self._q_des: dict[str, np.ndarray | None] = {"left": None, "right": None}
+        self._publish_hz = _publish_rate_hz()
+        self._align_log_path = os.environ.get("FA_HAND_ALIGN_LOG", "").strip()
+        self._align_fp = None
+        self._align_writer = None
+        self._stats_lock = threading.Lock()
+        self._target_intervals: list[float] = []
+        self._last_target_mono: float | None = None
+        self._publish_intervals: list[float] = []
+        self._last_publish_mono: float | None = None
+        self._target_count = 0
+        self._publish_count = 0
+
+        # Process isolation state
+        self._mp_ctx = mp.get_context("spawn")
+        self._shm = None
+        self._worker_proc: mp.Process | None = None
+        self._mp_sample_event = None
+        self._mp_stop_event = None
+        self._last_out_seq = -1
+        self._last_ingest_mono: float | None = None
+        self._age_warn_mono = 0.0
+
+        left_tag = (
+            self._left.retargeting_type
+            if self._left is not None
+            else (retargeting_type or cfg.backend)
+        )
+        right_tag = (
+            self._right.retargeting_type
+            if self._right is not None
+            else (right_retargeting or right_cfg.backend)
+        )
         if plan is not None:
             print_plan(plan)
             dump = plan.dump_yaml().rstrip()
+            left_tag = plan.left.retargeting_type
+            right_tag = plan.right.retargeting_type
         else:
             dump = format_resolved(
-                SideSpec(cfg.backend, self._left.retargeting_type),
-                SideSpec(right_cfg.backend, self._right.retargeting_type),
+                SideSpec(cfg.backend, str(left_tag)),
+                SideSpec(right_cfg.backend, str(right_tag)),
             ).rstrip()
             print(f"[local.yaml] source={cfg.path}", flush=True)
             print(dump, flush=True)
+        self._left_tag = f"{cfg.backend}/{left_tag}"
+        self._right_tag = f"{right_cfg.backend}/{right_tag}"
         vmax_l = self._cmd["left"].filter.max_velocity
         vmax_r = self._cmd["right"].filter.max_velocity
+        if self._async and self._process_retarget:
+            drive = "async(process-retarget,C=publish@%.0fHz)" % self._publish_hz
+        elif self._async:
+            drive = "async(thread-retarget,C=publish@%.0fHz)" % self._publish_hz
+        elif self._use_timer:
+            drive = "timer"
+        else:
+            drive = "legacy-ee-frame"
         self.get_logger().info(
             f"dual-hand\n{dump}\n"
-            f"rate={self._rate_hz}Hz left={self._left_topic} ({cfg.dof}) "
-            f"right={self._right_topic} ({right_cfg.dof})"
-            f"{'' if self._use_timer else ' drive=ee-frame'}\n"
+            f"rate_hz(doc)={self._rate_hz} left={self._left_topic} ({cfg.dof}) "
+            f"right={self._right_topic} ({right_cfg.dof}) drive={drive}\n"
             f"command_safety enabled={self._cmd_cfg.enabled} "
             f"publish={self._cmd_cfg.publish_command} "
             f"fsm={list(self._cmd_cfg.allowed_fsm_states)} "
             f"vmax=L{vmax_l}/R{vmax_r} "
             f"lpf={self._cmd_cfg.filter_cutoff_hz}Hz "
-            f"timeout={self._cmd_cfg.target_timeout}s"
+            f"timeout={self._cmd_cfg.target_timeout}s "
+            f"cmd_qos=depth1+RELIABLE"
         )
         self.get_logger().info(
             f"Hand mirror follows {_MIRROR_MODE_TOPIC} "
             "(ATM EE/trigger mirror_mode_; no local event-7 toggle)"
         )
 
+    # ------------------------------------------------------------------ FSM / mirror
+
     def _on_fsm(self, msg: Int32) -> None:
         was_open, is_open = self._gate.update(int(msg.data))
         if was_open == is_open and not self._gate.needs_resync:
             return
         if is_open and not was_open:
-            for side, pipe in (("left", self._left), ("right", self._right)):
+            for side in ("left", "right"):
                 seed = self._last_sent[side]
                 if seed is None:
-                    lim = _side_limits(pipe, self._cfg if side == "left" else self._right_cfg)
+                    cfg = self._cfg if side == "left" else self._right_cfg
+                    pipe = self._left if side == "left" else self._right
+                    lim = _side_limits(pipe, cfg)
                     seed = 0.5 * (lim[:, 0] + lim[:, 1])
                 self._cmd[side].reset(seed)
+                with self._async_lock:
+                    self._q_des[side] = np.asarray(seed, dtype=float).copy()
             if self._cmd_cfg.require_resync:
                 self._gate.mark_resynced()
             self._last_timer_time = time.monotonic()
@@ -194,27 +309,37 @@ class DualHandRetargetNode(Node):
                 self._stream_movej.kick(force=True)
         elif was_open and not is_open:
             self._last_sent = {"left": None, "right": None}
+            with self._async_lock:
+                self._q_target = {"left": None, "right": None}
+                self._q_des = {"left": None, "right": None}
             self.get_logger().info(
                 f"FSM {msg.data}: command gate closed; controller commands paused"
             )
 
     def _on_mirror_mode(self, msg: Bool) -> None:
-        """Follow ATM /teleop/mirror_mode level (same bit as EE/trigger)."""
         self._apply_mirror_level(bool(msg.data), source=_MIRROR_MODE_TOPIC)
 
     def _apply_mirror_level(self, want: bool, *, source: str) -> None:
-        """Set mirror level and flush last joints onto the new topic mapping."""
         want = bool(want)
         if want == self._mirror:
             return
-        prev = {
-            "left": None
-            if self._last_sent["left"] is None
-            else np.asarray(self._last_sent["left"], dtype=float).copy(),
-            "right": None
-            if self._last_sent["right"] is None
-            else np.asarray(self._last_sent["right"], dtype=float).copy(),
-        }
+        with self._async_lock:
+            prev_target = {
+                "left": None
+                if self._q_target["left"] is None
+                else self._q_target["left"].copy(),
+                "right": None
+                if self._q_target["right"] is None
+                else self._q_target["right"].copy(),
+            }
+            prev_des = {
+                "left": None
+                if self._q_des["left"] is None
+                else self._q_des["left"].copy(),
+                "right": None
+                if self._q_des["right"] is None
+                else self._q_des["right"].copy(),
+            }
         self._mirror = want
         save_mirror(self._mirror)
         host = self._mirror_host
@@ -232,11 +357,18 @@ class DualHandRetargetNode(Node):
             self.get_logger().warn(
                 f"status: hand mirror OFF (optical L→L / R→R) [{source}]"
             )
-        for side in ("left", "right"):
-            q = prev[side]
-            if q is None:
-                continue
-            self._maybe_publish(side, self._pub_for_optical_side(side), q)
+        with self._async_lock:
+            for side in ("left", "right"):
+                if prev_target[side] is not None:
+                    self._q_target[side] = prev_target[side]
+                if prev_des[side] is not None:
+                    self._q_des[side] = prev_des[side]
+        if not self._async:
+            for side in ("left", "right"):
+                q = prev_des[side] if prev_des[side] is not None else prev_target[side]
+                if q is None:
+                    continue
+                self._publish_q(side, q)
 
     def _pub_for_optical_side(self, side: str):
         key = optical_to_publish_side(side, self._mirror)
@@ -244,60 +376,487 @@ class DualHandRetargetNode(Node):
 
     def _live(self) -> bool:
         if not self._cmd_cfg.enabled:
-            # Legacy: only OCS2 (3).
             return self._gate.state == 3
         return self._gate.can_publish
 
     def _stream_ready(self) -> bool:
         return self._stream_movej is None or self._stream_movej.ready
 
-    def _maybe_publish(self, side: str, pub, q: np.ndarray) -> None:
+    def _publish_q(self, optical_side: str, q: np.ndarray) -> None:
         if self._cmd_cfg.enabled and not self._cmd_cfg.publish_command:
             return
-        prev = self._last_sent[side]
-        if prev is not None and np.allclose(q, prev, atol=1e-6, rtol=0.0):
-            return
+        pub = self._pub_for_optical_side(optical_side)
         msg = Float64MultiArray()
         msg.data = [float(x) for x in np.asarray(q, dtype=float).tolist()]
         pub.publish(msg)
-        self._last_sent[side] = np.asarray(q, dtype=float).copy()
+        self._last_sent[optical_side] = np.asarray(q, dtype=float).copy()
 
-    def _republish_last(self, now: float) -> None:
-        """HOLD heartbeat: keep last filtered command while gate closed."""
-        if self._gate.is_open:
+    # ------------------------------------------------------------------ async API
+
+    def notify_frame(self) -> None:
+        """EE thread: copy hand26 into shm / signal worker (no retarget here)."""
+        if not self._async:
             return
-        if now - self._last_heartbeat < self._hold_heartbeat_dt:
+        self._frame_seq += 1
+        if self._process_retarget and self._shm is not None:
+            left = right = None
+            if self._frame_source is not None:
+                left = self._frame_source("left")
+                right = self._frame_source("right")
+            try:
+                self._shm.write_input(
+                    frame_seq=self._frame_seq,
+                    t_mono=time.monotonic(),
+                    live=bool(self._live() and self._stream_ready()),
+                    left=left,
+                    right=right,
+                )
+            except Exception as exc:
+                self.get_logger().error(f"hand shm write failed: {exc}")
+                return
+            if self._mp_sample_event is not None:
+                self._mp_sample_event.set()
             return
-        self._last_heartbeat = now
-        for side in ("left", "right"):
-            prev = self._last_sent[side]
-            if prev is None:
+        self._sample_event.set()
+
+    def start_async(self) -> None:
+        if not self._async:
+            return
+        if self._publish_thread is not None:
+            return
+        self._open_align_log()
+        self._async_stop.clear()
+        if self._process_retarget:
+            self._start_process_worker()
+        else:
+            self._worker_thread = threading.Thread(
+                target=self._worker_loop,
+                name="hand-retarget-worker",
+                daemon=True,
+            )
+            self._worker_thread.start()
+        self._publish_thread = threading.Thread(
+            target=self._publish_loop,
+            name="hand-publish-250hz",
+            daemon=True,
+        )
+        self._publish_thread.start()
+        mode = "process" if self._process_retarget else "thread"
+        self.get_logger().info(
+            f"async hand pipeline started mode={mode} "
+            f"publish={self._publish_hz:.0f}Hz align_log="
+            f"{self._align_log_path or 'off'}"
+        )
+
+    def _start_process_worker(self) -> None:
+        from xr_hand_retarget.ipc.hand_shm import HandShmBundle
+        from xr_hand_retarget.ipc.retarget_worker import worker_main
+
+        self._shm = HandShmBundle.create_pair()
+        self._mp_sample_event = self._mp_ctx.Event()
+        self._mp_stop_event = self._mp_ctx.Event()
+        self._worker_proc = self._mp_ctx.Process(
+            target=worker_main,
+            kwargs={
+                "in_shm_name": self._shm.in_name,
+                "out_shm_name": self._shm.out_name,
+                "sample_event": self._mp_sample_event,
+                "stop_event": self._mp_stop_event,
+                "plan_kwargs": self._plan_kwargs,
+                "left_retargeting": self._left_rtype,
+                "right_retargeting": self._right_rtype,
+            },
+            name="hand-retarget-proc",
+            daemon=True,
+        )
+        self._worker_proc.start()
+        self.get_logger().info(
+            f"hand retarget process pid={self._worker_proc.pid} "
+            f"shm_in={self._shm.in_name} shm_out={self._shm.out_name}"
+        )
+
+    def stop_async(self) -> None:
+        if not self._async:
+            return
+        self._async_stop.set()
+        self._sample_event.set()
+        self._target_updated.set()
+        if self._mp_stop_event is not None:
+            self._mp_stop_event.set()
+        if self._mp_sample_event is not None:
+            self._mp_sample_event.set()
+        if self._worker_proc is not None:
+            self._worker_proc.join(timeout=3.0)
+            if self._worker_proc.is_alive():
+                self._worker_proc.terminate()
+                self._worker_proc.join(timeout=1.0)
+            self._worker_proc = None
+        for th in (self._worker_thread, self._publish_thread):
+            if th is not None and th.is_alive():
+                th.join(timeout=2.0)
+        self._worker_thread = None
+        self._publish_thread = None
+        if self._shm is not None:
+            try:
+                self._shm.close()
+                self._shm.unlink()
+            except Exception:
+                pass
+            self._shm = None
+        self._close_align_log()
+        self._log_async_stats()
+
+    def destroy_node(self) -> bool:
+        try:
+            self.stop_async()
+        except Exception:
+            pass
+        return super().destroy_node()
+
+    def _open_align_log(self) -> None:
+        if not self._align_log_path:
+            return
+        path = Path(self._align_log_path).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._align_fp = path.open("w", newline="")
+        self._align_writer = csv.writer(self._align_fp)
+        self._align_writer.writerow(
+            [
+                "frame_seq",
+                "side",
+                "t_recv",
+                "t_compute",
+                "t_publish",
+                "q0",
+                "q1",
+                "q2",
+            ]
+        )
+
+    def _close_align_log(self) -> None:
+        if self._align_fp is not None:
+            try:
+                self._align_fp.close()
+            except Exception:
+                pass
+        self._align_fp = None
+        self._align_writer = None
+
+    def _log_async_stats(self) -> None:
+        with self._stats_lock:
+            t_iv = list(self._target_intervals)
+            p_iv = list(self._publish_intervals)
+            tc, pc = self._target_count, self._publish_count
+
+        def _summ(xs: list[float]) -> str:
+            if not xs:
+                return "n=0"
+            a = np.asarray(xs, dtype=float)
+            return (
+                f"n={a.size} med={1e3 * float(np.median(a)):.2f}ms "
+                f"p99={1e3 * float(np.percentile(a, 99)):.2f}ms "
+                f"max={1e3 * float(np.max(a)):.2f}ms "
+                f"hz~={1.0 / max(float(np.median(a)), 1e-9):.1f}"
+            )
+
+        self.get_logger().info(
+            f"async stats targets={tc} ({_summ(t_iv)}) "
+            f"publishes={pc} ({_summ(p_iv)})"
+        )
+
+    def _ingest_worker_output(self) -> bool:
+        """Pull newest q_target from shm (process mode). Returns True if updated."""
+        if self._shm is None:
+            return False
+        try:
+            seq = int(self._shm.peek_out_seq())
+        except Exception as exc:
+            self.get_logger().error(f"hand shm peek failed: {exc}")
+            return False
+        if seq == self._last_out_seq:
+            return False
+        try:
+            out = self._shm.read_output()
+        except Exception as exc:
+            self.get_logger().error(f"hand shm read failed: {exc}")
+            return False
+        if out is None:
+            return False
+        seq = int(out["frame_seq"])
+        if seq == self._last_out_seq:
+            return False
+        self._last_out_seq = seq
+        updated = False
+        with self._async_lock:
+            for side, q_key, held_key in (
+                ("left", "left_q", "left_held"),
+                ("right", "right_q", "right_held"),
+            ):
+                q = out[q_key]
+                if q is None:
+                    continue
+                held = bool(out[held_key])
+                if held:
+                    self._held[side] += 1
+                    if self._q_target[side] is None:
+                        self._q_target[side] = np.asarray(q, dtype=float).copy()
+                        self._q_target_seq[side] = seq
+                        self._q_target_fresh[side] = True
+                        updated = True
+                    continue
+                self._q_target[side] = np.asarray(q, dtype=float).copy()
+                self._q_target_seq[side] = seq
+                self._q_target_fresh[side] = True
+                updated = True
+        if updated:
+            now = time.monotonic()
+            self._last_ingest_mono = now
+            with self._stats_lock:
+                if self._last_target_mono is not None:
+                    self._target_intervals.append(now - self._last_target_mono)
+                    if len(self._target_intervals) > 2000:
+                        self._target_intervals = self._target_intervals[-1000:]
+                self._last_target_mono = now
+                self._target_count += 1
+            self._maybe_print_status_async()
+        return updated
+
+    # ----- in-process worker (FA_HAND_PROCESS=0) -----
+
+    def _worker_loop(self) -> None:
+        while not self._async_stop.is_set():
+            self._sample_event.wait(timeout=0.05)
+            if self._async_stop.is_set():
+                break
+            self._sample_event.clear()
+            while self._sample_event.is_set():
+                self._sample_event.clear()
+            try:
+                self._worker_once()
+            except Exception as exc:
+                self.get_logger().error(f"hand worker failed: {exc}")
+
+    def _worker_once(self) -> None:
+        if self._left is None or self._right is None:
+            return
+        if not self._live() or not self._stream_ready():
+            return
+        frame_seq = int(self._frame_seq)
+        left_f = self._read_frame("left")
+        right_f = self._read_frame("right")
+        left = self._left.step(left_f) if left_f is not None else None
+        right = self._right.step(right_f) if right_f is not None else None
+        if left is None and right is None:
+            return
+        updated = False
+        with self._async_lock:
+            for side, step in (("left", left), ("right", right)):
+                if step is None:
+                    continue
+                if step.held:
+                    self._held[side] += 1
+                    if self._q_target[side] is None:
+                        self._q_target[side] = np.asarray(step.q, dtype=float).copy()
+                        self._q_target_seq[side] = frame_seq
+                        self._q_target_fresh[side] = True
+                        updated = True
+                    continue
+                self._q_target[side] = np.asarray(step.q, dtype=float).copy()
+                self._q_target_seq[side] = frame_seq
+                self._q_target_fresh[side] = True
+                updated = True
+        if updated:
+            now = time.monotonic()
+            self._last_ingest_mono = now
+            with self._stats_lock:
+                if self._last_target_mono is not None:
+                    self._target_intervals.append(now - self._last_target_mono)
+                    if len(self._target_intervals) > 2000:
+                        self._target_intervals = self._target_intervals[-1000:]
+                self._last_target_mono = now
+                self._target_count += 1
+            self._target_updated.set()
+            self._maybe_print_status(left, right)
+
+    def _publish_loop(self) -> None:
+        period = 1.0 / max(self._publish_hz, 1.0)
+        next_t = time.monotonic()
+        last_filter_t = next_t
+        while not self._async_stop.is_set():
+            now = time.monotonic()
+            timeout = max(0.0, next_t - now)
+            # Process mode: poll shm; thread mode: wait on event.
+            if self._process_retarget:
+                fired = self._ingest_worker_output()
+                if not fired and timeout > 0.0:
+                    time.sleep(min(timeout, 0.002))
+                    fired = self._ingest_worker_output()
+            else:
+                fired = self._target_updated.wait(timeout=timeout)
+                if fired:
+                    self._target_updated.clear()
+            if self._async_stop.is_set():
+                break
+            now = time.monotonic()
+            if not fired and now < next_t:
                 continue
-            msg = Float64MultiArray()
-            msg.data = [float(x) for x in prev.tolist()]
-            self._pub_for_optical_side(side).publish(msg)
+            dt = float(np.clip(now - last_filter_t, 1.0e-4, 0.1))
+            last_filter_t = now
+            try:
+                self._publish_tick(now=now, dt=dt)
+            except Exception as exc:
+                self.get_logger().error(f"hand publish failed: {exc}")
+            with self._stats_lock:
+                if self._last_publish_mono is not None:
+                    self._publish_intervals.append(now - self._last_publish_mono)
+                    if len(self._publish_intervals) > 4000:
+                        self._publish_intervals = self._publish_intervals[-2000:]
+                self._last_publish_mono = now
+                self._publish_count += 1
+            if fired and now < next_t:
+                continue
+            next_t += period
+            if now > next_t + period:
+                next_t = now + period
 
-    def _skip_teleop(self, now: float) -> None:
-        self._republish_last(now)
+    def _publish_tick(self, *, now: float, dt: float) -> None:
+        """Always publish current filtered q (no allclose skip).
+
+        ``target_fresh``: while gate is open and ``q_target`` exists, keep the
+        filter tracking (do **not** let DexCap ``target_timeout`` freeze after
+        0.25s just because publish ticks faster than retarget). Worker gaps are
+        reported via ingest age diagnostics (watch for age≈2.69s stalls).
+        """
+        if not self._live() or not self._stream_ready():
+            return
+        if self._cmd_cfg.enabled and not self._cmd_cfg.publish_command:
+            return
+        ingest_age = (
+            float("inf")
+            if self._last_ingest_mono is None
+            else now - self._last_ingest_mono
+        )
+        if ingest_age > 1.0 and (now - self._age_warn_mono) > 2.0:
+            self._age_warn_mono = now
+            self.get_logger().warn(
+                f"hand q_target ingest age={ingest_age:.2f}s "
+                f"(worker stall or gate; filter still chasing last target)"
+            )
+        for side in ("left", "right"):
+            with self._async_lock:
+                target = self._q_target[side]
+                seq = self._q_target_seq[side]
+                was_new = self._q_target_fresh[side]
+                if target is None:
+                    continue
+                target = target.copy()
+                self._q_target_fresh[side] = False
+            # Have a target under open gate → always "fresh" for filter timeout.
+            if self._cmd_cfg.enabled:
+                q = self._cmd[side].process(
+                    target,
+                    now=now,
+                    dt=dt,
+                    target_fresh=True,
+                )
+            else:
+                q = target
+            with self._async_lock:
+                self._q_des[side] = np.asarray(q, dtype=float).copy()
+            # No allclose dedup: fixed-rate publish must keep driver fed.
+            self._publish_q(side, q)
+            if self._align_writer is not None and was_new:
+                self._align_writer.writerow(
+                    [
+                        seq,
+                        f"{side}_pub",
+                        "",
+                        "",
+                        f"{now:.6f}",
+                        f"{float(q[0]):.6f}" if len(q) > 0 else "",
+                        f"{float(q[1]):.6f}" if len(q) > 1 else "",
+                        f"{float(q[2]):.6f}" if len(q) > 2 else "",
+                    ]
+                )
+
+    def _maybe_print_status_async(self) -> None:
+        wall = time.time()
+        if self._print_every <= 0 or (wall - self._last_print) < self._print_every:
+            return
+        self._last_print = wall
+        tag = (
+            self._left_tag
+            if self._left_tag == self._right_tag
+            else f"L={self._left_tag} R={self._right_tag}"
+        )
+        gate = "open" if self._gate.can_publish else "closed"
+        with self._async_lock:
+            lq = self._q_target["left"]
+            rq = self._q_target["right"]
+        with self._stats_lock:
+            thz = (
+                1.0 / max(float(np.median(self._target_intervals)), 1e-9)
+                if self._target_intervals
+                else 0.0
+            )
+            phz = (
+                1.0 / max(float(np.median(self._publish_intervals)), 1e-9)
+                if self._publish_intervals
+                else 0.0
+            )
+        mode = "proc" if self._process_retarget else "thread"
+        self.get_logger().info(
+            f"[{tag} {mode} gate={gate} target~{thz:.1f}Hz pub~{phz:.1f}Hz] "
+            f"L held={self._held['left']} q={_fmt_q(lq) if lq is not None else 'none'} | "
+            f"R held={self._held['right']} q={_fmt_q(rq) if rq is not None else 'none'}"
+        )
+
+    def _maybe_print_status(self, left, right) -> None:
+        wall = time.time()
+        if self._print_every <= 0 or (wall - self._last_print) < self._print_every:
+            return
+        self._last_print = wall
+        src = "cache" if self._frame_source is not None else "sdk"
+        tag = (
+            self._left_tag
+            if self._left_tag == self._right_tag
+            else f"L={self._left_tag} R={self._right_tag}"
+        )
+        ltxt = _fmt_side("L", left, self._held["left"]) if left is not None else "L none"
+        rtxt = (
+            _fmt_side("R", right, self._held["right"]) if right is not None else "R none"
+        )
+        gate = "open" if self._gate.can_publish else "closed"
+        with self._stats_lock:
+            thz = (
+                1.0 / max(float(np.median(self._target_intervals)), 1e-9)
+                if self._target_intervals
+                else 0.0
+            )
+            phz = (
+                1.0 / max(float(np.median(self._publish_intervals)), 1e-9)
+                if self._publish_intervals
+                else 0.0
+            )
+        self.get_logger().info(
+            f"[{tag} {src} gate={gate} target~{thz:.1f}Hz pub~{phz:.1f}Hz] "
+            f"{ltxt} | {rtxt}"
+        )
 
     def step_once(self) -> None:
-        """Retarget from the latest cached OpenXR 26 (same tick as wrist EE)."""
-        now = time.monotonic()
-        if not self._live() or not self._stream_ready():
-            self._skip_teleop(now)
+        if self._async:
+            self.notify_frame()
             return
-        if now - self._last_step < self._min_step_dt:
-            return
-        self._last_step = now
         try:
             self._on_timer()
         except Exception as exc:
             self.get_logger().error(f"hand step failed: {exc}")
 
     def _on_timer(self):
+        if self._left is None or self._right is None:
+            return
         now = time.monotonic()
         if not self._live() or not self._stream_ready():
-            self._skip_teleop(now)
             return
         if self._last_timer_time is None:
             self._last_timer_time = now
@@ -323,24 +882,11 @@ class DualHandRetargetNode(Node):
                     dt=dt,
                     target_fresh=not step.held,
                 )
-                if self._cmd[side].stale and step.held:
-                    # Keep publishing held filtered q (stale path).
-                    pass
             else:
                 q = step.q
-            self._maybe_publish(side, self._pub_for_optical_side(side), q)
+            self._publish_q(side, q)
 
-        wall = time.time()
-        if self._print_every > 0 and (wall - self._last_print) >= self._print_every:
-            self._last_print = wall
-            src = "cache" if self._frame_source is not None else "sdk"
-            left_tag = f"{self._cfg.backend}/{self._left.retargeting_type}"
-            right_tag = f"{self._right_cfg.backend}/{self._right.retargeting_type}"
-            tag = left_tag if left_tag == right_tag else f"L={left_tag} R={right_tag}"
-            ltxt = _fmt_side("L", left, self._held["left"]) if left is not None else "L none"
-            rtxt = _fmt_side("R", right, self._held["right"]) if right is not None else "R none"
-            gate = "open" if self._gate.can_publish else "closed"
-            self.get_logger().info(f"[{tag} {src} gate={gate}] {ltxt} | {rtxt}")
+        self._maybe_print_status(left, right)
 
     def _read_frame(self, side: str):
         from xr_hand_retarget.sources.frame import HandFrame

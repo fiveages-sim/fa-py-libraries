@@ -2,6 +2,8 @@
 
 `DualHandRetargetNode` 在 retarget 之后、发控制器命令之前走与 teleop_ws 相同的一层。
 
+异步 teleop（`async_pipeline`）下：retarget 在 Thread B 写 `q_target`，**Thread C @ 250Hz** 调 `OnlineCommandFilter` 并发布（禁止 rclpy timer）。见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)。
+
 ## 配置位置
 
 1. **本机覆盖（推荐）**：`configs/local.yaml` 顶层 `command:` — 键名与 `dexcap_hand_retarget.launch.py` 相同  

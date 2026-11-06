@@ -69,6 +69,11 @@ fa-py-libraries/
 
 DexCap 以后只写 source，不必改 O6/XHand。验证命令见 [RUN.md](RUN.md)。
 
+### P1b — EE ⊥ hand 异步发布（本仓进行中）
+
+腕+灵巧手同进程时，禁止把 retarget 挂在 EE `on_frame` 上（会拖死 FRAME_GATE）。
+三方结构、红线与验收见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)；P0 CPU 脚本：`scripts/p0_teleop_cpu.sh`。
+
 ### P1 — 配置拆开（本仓已落地）
 
 | 文件 | 内容 |
