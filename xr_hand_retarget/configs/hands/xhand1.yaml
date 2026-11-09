@@ -94,6 +94,9 @@ safety:
   max_delta_rad: 0.0
   hold_on_inactive: true
   hold_on_zero_pose: true
+  # Pico is_active flickers on arm motion; keep following if palm triangle is real.
+  min_palm_area_m2: 1.0e-5
+  inactive_hold_s: 0.20   # inactive+tiny-palm must last this long before held
   # Override on machine: configs/local.yaml → safety.soft_collision
   soft_collision: true
   collision:

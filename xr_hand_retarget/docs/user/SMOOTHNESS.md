@@ -12,11 +12,12 @@ q_target → OnlineCommandFilter(filter_cutoff_hz, max_velocity) @ publish_hz �
 
 ## 推荐起点（xhand1）
 
-| 键 | 库默认（索引 yaml） | 本机 example |
-|----|---------------------|--------------|
-| `filter_cutoff_hz` | 8.0 | **10.0**（略跟手） |
+| 键 | 库默认（索引 yaml） | 本机常见 |
+|----|---------------------|----------|
+| `filter_cutoff_hz` | 8.0 | **10–12**（`local.yaml.example`=10；跟手可到 12） |
 | `max_velocity` | 6.0 | **6.0** |
 | `teleop.publish_hz` | 120 | **120** |
+| `teleop.max_iterations` | solver yaml **40** | 可选压 CPU（本机常 10）；`FA_HAND_MAX_ITER` 优先 |
 
 Linker / Wuji：同一 `command:` 键；vmax 库默认 4 / 1.5，先别为顺畅度改 solver。
 
@@ -38,7 +39,7 @@ python3 scripts/teleop_probe.py --sec 5 --csv /tmp/smooth_a.csv
 - `fc`↑（→12）更跟手，易毛刺；`fc`↓（→6）更滑，易滞后。
 - `vmax`↓ 少台阶但拖尾；`vmax`↑ 更跟手易抖。
 - 不要把 `publish_hz` 拉回 250 来「治」顺畅度（会抢 EE GIL）。
-- 解算过密会把 spawn worker 打到数百分 CPU：保持 `retarget_hz≈80`，需要再省再用 `max_iterations`。
+- 解算过密会把 spawn worker 打到数百分 CPU：保持 `retarget_hz≈80`，再省用 `max_iterations`（默认 40，可压到 ~10）。
 
 定参后写回 `configs/local.yaml` 的 `command:` / `teleop.*`。
 

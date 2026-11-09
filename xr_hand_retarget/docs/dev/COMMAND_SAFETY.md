@@ -2,7 +2,7 @@
 
 `DualHandRetargetNode` 在 retarget 之后、发控制器命令之前走与 teleop_ws 相同的一层。
 
-异步 teleop（`async_pipeline`）下：retarget 在 Process B 写 `q_target`，**Thread C @ publish_hz**（local `teleop.publish_hz` / `FA_HAND_PUBLISH_HZ` / 默认 120）调 `OnlineCommandFilter` 并发布（禁止 rclpy timer）。见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)。
+异步 teleop 下：retarget 在 Process B 写 `q_target`，**Thread C @ publish_hz**（local / `FA_HAND_PUBLISH_HZ` / 默认 120）调 `OnlineCommandFilter` 并发布（禁止 rclpy timer）。`held` 时降为 1 Hz 心跳，`lost` 时停发。见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)。
 
 ## 配置位置
 

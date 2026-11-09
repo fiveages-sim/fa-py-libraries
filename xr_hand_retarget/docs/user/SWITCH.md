@@ -40,7 +40,7 @@ teleop:
 
 command:
   max_velocity: 6.0          # xhand1=6 / linker=4 / wuji=1.5
-  filter_cutoff_hz: 10.0     # 本机推荐；库默认 8
+  filter_cutoff_hz: 10.0     # 起点 10；跟手可到 12（见 local.yaml / SMOOTHNESS）
   command_epsilon: 0.001
   target_timeout: 0.25
   allowed_fsm_states: [3, 4]

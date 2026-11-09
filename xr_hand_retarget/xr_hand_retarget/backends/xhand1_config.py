@@ -60,6 +60,10 @@ class HandConfig:
     urdf_path: str | None = None
     finger_scale: dict[str, float] | None = None
     limits_source: str = "yaml"  # yaml | urdf
+    # Pico is_active flicker: keep retargeting if palm triangle still real (o6 parity).
+    min_palm_area_m2: float = 1.0e-5
+    # inactive+tiny-palm must persist this long before held (seconds).
+    inactive_hold_s: float = 0.20
 
     @property
     def dof(self) -> int:
@@ -523,6 +527,8 @@ def load_hand_config(path: str | Path | None = None) -> HandConfig:
         max_delta_rad=float(safety.get("max_delta_rad", 0.0)),
         hold_on_inactive=bool(safety.get("hold_on_inactive", True)),
         hold_on_zero_pose=bool(safety.get("hold_on_zero_pose", True)),
+        min_palm_area_m2=float(safety.get("min_palm_area_m2", 1.0e-5)),
+        inactive_hold_s=float(safety.get("inactive_hold_s", 0.20)),
         soft_collision=bool(safety.get("soft_collision", True)),  # default ON
         collision=_parse_collision(collision_raw),
         motion=_parse_motion(motion_raw),

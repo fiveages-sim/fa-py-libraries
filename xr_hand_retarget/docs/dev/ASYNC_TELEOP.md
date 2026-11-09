@@ -46,14 +46,17 @@ Process B — hand retarget（multiprocessing spawn）
 
 硬约束：
 
-1. **Publish 必须是 `threading.Thread`**，不能用 rclpy timer。
+1. **Publish 必须是 `threading.Thread`**，不能用 rclpy timer（无 sync/`use_timer`/`legacy-ee-frame`）。
 2. **Frame gate 必须是 `threading.Thread`**，不能挂 STE timer。
 3. **B 只读 shm**，不二次 SDK。
 4. **`q_target` 最新覆盖**：不排队。
 5. SDK 单客户端：只在 A 初始化。
+6. **Publish 三态（分侧）**：`fresh`／`held`／`lost`；日志 `state=L:held/R:fresh`。xhand1：`active==0` 但掌心面积够仍跟（对齐 o6）；面积过小再累计 `inactive_hold_s` 才 held。
+7. **关闸保留 `_last_sent`**；开闸重置 `_last_ingest_mono`。LOST 超时 `max(1.0, 4/retarget_hz)`。
+8. **`/teleop/xrt_diag`** 尾部：`palm_u`、`orient_src` — 区分假 inactive vs 真遮挡。
 
 GIL：默认 `setswitchinterval(0.0005)`；A/B 用 `FA_HAND_SWITCH_INTERVAL=0.0002`。  
-验收：**开 hand 时 EE arriv/p95 接近 controller**。
+验收：**开 hand 时 EE arriv/p95 接近 controller**。遮挡时 hand **arriv**→0（或 ~1 Hz）；hold 段 `rep%`≈100% 正常，看 arriv 不看 rep%。`target~0` / `pub~1` 在 held 下是预期。
 
 ---
 

@@ -18,6 +18,7 @@ from xr_hand_retarget.algorithms.vector_retarget import (
     default_xhand1_vector_config,
 )
 from xr_hand_retarget.backends.xhand1_config import HandConfig
+from xr_hand_retarget.landmarks import openxr_palm_triangle_area_m2
 
 # CommandSafety dt: wall clock, not publish.rate_hz (async publish owns its own dt).
 _DT_FALLBACK = 1.0 / 30.0
@@ -79,6 +80,7 @@ class SidePipeline:
             dt_default=_DT_FALLBACK,
         )
         self._last_mono: float | None = None
+        self._inactive_since: float | None = None
         if cfg.motion.enabled:
             lim0 = self.safety.effective_limits[0]
             print(
@@ -119,10 +121,27 @@ class SidePipeline:
         dt = self._wall_dt()
         active = int(frame.active)
         raw = frame.ensure_joints26()
-        invalid = (self.cfg.hold_on_inactive and active == 0) or (
-            self.cfg.hold_on_zero_pose and pose_is_zero(raw)
-        )
-        if invalid:
+        now = time.monotonic()
+        # Pico is_active flickers when the arm moves (UPDATE / o6). Keep
+        # retargeting while the OpenXR palm triangle still looks like a hand.
+        hold = False
+        if self.cfg.hold_on_zero_pose and pose_is_zero(raw):
+            hold = True
+            self._inactive_since = None
+        elif self.cfg.hold_on_inactive and active == 0:
+            area = openxr_palm_triangle_area_m2(raw)
+            min_area = float(getattr(self.cfg, "min_palm_area_m2", 1.0e-5))
+            hold_s = float(getattr(self.cfg, "inactive_hold_s", 0.20))
+            if area < min_area:
+                if self._inactive_since is None:
+                    self._inactive_since = now
+                hold = (now - self._inactive_since) >= hold_s
+            else:
+                self._inactive_since = None
+        else:
+            self._inactive_since = None
+
+        if hold:
             q_cmd = self.safety.hold()
             held = True
         else:

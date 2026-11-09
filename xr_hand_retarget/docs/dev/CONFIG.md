@@ -19,7 +19,7 @@ vr …/xrt_teleop.yaml        VR 腕/手柄产品配置（preset；不与 local 
 | `hands.source` / `hands.user` | 输入源 / 人标定 id |
 | `teleop.publish_hz` | async `q_des` Hz（默认 120；`FA_HAND_PUBLISH_HZ` 优先） |
 | `teleop.retarget_hz` | Process B 求解上限（默认 80；`FA_HAND_RETARGET_HZ` 优先） |
-| `teleop.max_iterations` | 可选压 vector 迭代（`FA_HAND_MAX_ITER` 优先） |
+| `teleop.max_iterations` | 可选压 vector 迭代；solver 默认 **40**；`FA_HAND_MAX_ITER` 优先于 local |
 | `teleop.ee_source` | 文档指针 `wrist\|controller\|hand`（实际仍用 `./run.sh` 参数） |
 | `command.*` | `max_velocity` / `filter_cutoff_hz` / …（顺畅度） |
 | `safety.soft_collision` | 仅 XHand1 |
@@ -80,10 +80,12 @@ command:
 | `FA_HAND_PUBLISH_HZ` | （无则 local / 120） | 覆盖 publish |
 | `FA_HAND_RETARGET_HZ` | （无则 local / 80） | 覆盖解算限频 |
 | `FA_HAND_MAX_ITER` | （无则 yaml 40） | 覆盖 L-BFGS 迭代 |
-| `FA_HAND_WORKER_CPUS` | 末 2 核 | worker `sched_setaffinity` |
+| `FA_HAND_WORKER_CPUS` | 末 2 核 | worker `sched_setaffinity`；启动日志 `[hand-worker] … cpus=` |
 | `FA_FRAME_GATE_HZ` | 3000 | 帧门控线程 |
 | `FA_HAND_SWITCH_INTERVAL` | 0.0005 | GIL A/B |
-| `FA_HAND_PROCESS` | 1 | 0=线程版 retarget |
+| `FA_HAND_PROCESS` | 1 | `1`=process / `0`=thread；非法值 WARN 后仍走 process |
+
+**亲和核对（真机，不改代码）**：看 `[hand-worker] cpus=` 实际值，确认与外层 `ros2_control_cpus` **不重叠**。
 
 见 [ASYNC_TELEOP.md](ASYNC_TELEOP.md)。
 
