@@ -4,6 +4,7 @@
 
 | 文档 | 内容 |
 |------|------|
+| [仓库 README](../../../README.md) | fa-py 总入口：环境 · `run.sh` · XRT controller/wrist |
 | [SWITCH.md](SWITCH.md) | 安装 · 用户层参数 · 执行 |
 | [SMOOTHNESS.md](SMOOTHNESS.md) | fc / vmax 顺畅度 A/B |
 | [CURL_CALIB.md](CURL_CALIB.md) | XHand1 curl 标定姿态 |

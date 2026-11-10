@@ -48,7 +48,6 @@ usage() {
   echo "                           controller=手柄 6DoF 控臂+夹爪"
   echo "                           wrist=光学腕 6DoF 控臂+灵巧手（交互菜单会再选手型）"
   echo "                           例: ./run.sh vr-xrt wrist"
-  echo "                           wrist 运行中本终端: o=事件11(A/OCS2)  h=事件12(X/HOLD)，与脚踏板同一 /teleop/controller_state"
   echo "  vr-xrt-service [start]   启动 XRoboToolkit PC Service（runService.sh）"
   echo "  vr-xrt-service stop      关闭 XRoboToolkit PC Service"
   echo "  vr-update                临时发右摇杆 UPDATE（controller_state=4；非 OCS2 无效）"
