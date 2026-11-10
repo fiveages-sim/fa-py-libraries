@@ -36,7 +36,7 @@ usage() {
   echo
   echo "本地 XR 配置: configs/local_xr.sh"
   echo "  configs/local.yaml      → 换手: hands.type = xhand1 | wuji | o6 | l6 | o7"
-  echo "  FA_HAND                 → 临时覆盖 local.yaml"
+  echo "  FA_HAND                 → 临时覆盖 local.yaml（none=无手）"
   echo "  FA_XRT_TELEOP_CONFIG    → XRT 预置 (xrt_teleop.yaml)"
   echo
   echo "可视化:"
@@ -46,8 +46,9 @@ usage() {
   echo "  vr                       启动 vr_pose_publisher（Vuer/WebXR）"
   echo "  vr-xrt [controller|wrist]  启动 XRoboToolkit"
   echo "                           controller=手柄 6DoF 控臂+夹爪"
-  echo "                           wrist=光学腕 6DoF 控臂+灵巧手（交互菜单会再选手型）"
+  echo "                           wrist=光学腕 6DoF 控臂；交互菜单再选手型（含无手）"
   echo "                           例: ./run.sh vr-xrt wrist"
+  echo "                               ./run.sh vr-xrt wrist --no-hands   # 仅腕，不启灵巧手"
   echo "  vr-xrt-service [start]   启动 XRoboToolkit PC Service（runService.sh）"
   echo "  vr-xrt-service stop      关闭 XRoboToolkit PC Service"
   echo "  vr-update                临时发右摇杆 UPDATE（controller_state=4；非 OCS2 无效）"
@@ -221,15 +222,20 @@ run_vr_xrt_launch() {
   fi
 
   local extra=()
-  local has_config=0 has_hand_config=0 has_hand_retargeting=0
+  local has_config=0 has_hand_config=0 has_hand_retargeting=0 has_no_hands=0
   local arg
   for arg in "$@"; do
     case "$arg" in
       --config|--config=*) has_config=1 ;;
       --hand-config|--hand-config=*) has_hand_config=1 ;;
       --hand-retargeting|--hand-retargeting=*) has_hand_retargeting=1 ;;
+      --no-hands) has_no_hands=1 ;;
     esac
   done
+  # FA_HAND=none → optical wrist EE only (fa-w2 may run without dexterous hand).
+  if [[ "${FA_HAND:-}" == "none" || "${FA_HAND:-}" == "nohand" || "${FA_HAND:-}" == "no-hand" ]]; then
+    has_no_hands=1
+  fi
   if [[ $has_config -eq 0 && -n "${FA_XRT_TELEOP_CONFIG:-}" ]]; then
     if [[ ! -f "$FA_XRT_TELEOP_CONFIG" ]]; then
       echo "未找到 FA_XRT_TELEOP_CONFIG: $FA_XRT_TELEOP_CONFIG"
@@ -238,7 +244,14 @@ run_vr_xrt_launch() {
     fi
     extra+=(--config "$FA_XRT_TELEOP_CONFIG")
   fi
-  if [[ $has_hand_config -eq 0 && -n "${FA_HAND_CONFIG:-}" ]]; then
+  if [[ $has_no_hands -eq 1 ]]; then
+    # Skip hand-config; ensure --no-hands reaches the node even if only FA_HAND=none.
+    local has_no_hands_arg=0
+    for arg in "$@"; do
+      [[ "$arg" == "--no-hands" ]] && has_no_hands_arg=1
+    done
+    [[ $has_no_hands_arg -eq 0 ]] && extra+=(--no-hands)
+  elif [[ $has_hand_config -eq 0 && -n "${FA_HAND_CONFIG:-}" ]]; then
     if [[ ! -f "$FA_HAND_CONFIG" ]]; then
       echo "未找到 FA_HAND_CONFIG: $FA_HAND_CONFIG"
       echo "请编辑 configs/local_xr.sh"
@@ -246,20 +259,24 @@ run_vr_xrt_launch() {
     fi
     extra+=(--hand-config "$FA_HAND_CONFIG")
   fi
-  if [[ $has_hand_retargeting -eq 0 && -n "${FA_HAND_RETARGETING:-}" ]]; then
+  if [[ $has_no_hands -eq 0 && $has_hand_retargeting -eq 0 && -n "${FA_HAND_RETARGETING:-}" ]]; then
     extra+=(--hand-retargeting "$FA_HAND_RETARGETING")
   fi
 
   echo ">>> 启动 vr pose launch (XRoboToolkit)"
   echo ">>> 请确认: PC Service 已运行，Pico App 已连接"
-  if [[ $# -gt 0 ]]; then
+  if [[ $# -gt 0 || ${#extra[@]} -gt 0 ]]; then
     echo ">>> 同一 PC Service 只能有一个 SDK 客户端；不要再另开 xr_hand_retarget"
     echo ">>> local_xr: teleop=$FA_XRT_TELEOP_CONFIG"
-    echo ">>> local_xr: hand=${FA_HAND:-?} $FA_HAND_CONFIG"
-    if [[ -n "${FA_HAND_RETARGETING:-}" ]]; then
-      echo ">>> local_xr: retargeting override=$FA_HAND_RETARGETING"
+    if [[ $has_no_hands -eq 1 ]]; then
+      echo ">>> local_xr: hand=none (--no-hands，仅光学腕 EE)"
+    else
+      echo ">>> local_xr: hand=${FA_HAND:-?} $FA_HAND_CONFIG"
+      if [[ -n "${FA_HAND_RETARGETING:-}" ]]; then
+        echo ">>> local_xr: retargeting override=$FA_HAND_RETARGETING"
+      fi
     fi
-    echo ">>> 参数: $*"
+    echo ">>> 参数: ${extra[*]} $*"
   fi
   python "$script_path" "${extra[@]}" "$@"
 }
@@ -289,6 +306,7 @@ run_vr_ocs2() {
 }
 
 # Apply FA_HAND → FA_HAND_CONFIG (same mapping as configs/local_xr.sh).
+# none = optical wrist EE only (no DualHand / fa-w2 hand topics).
 _apply_fa_hand() {
   local hand="${1:?}"
   case "${hand}" in
@@ -297,8 +315,14 @@ _apply_fa_hand() {
     o6|linkerhand_o6|linker_o6) hand=o6; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/o6.yaml" ;;
     l6|linkerhand_l6|linker_l6) hand=l6; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/l6.yaml" ;;
     o7|linkerhand_o7|linker_o7) hand=o7; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/o7.yaml" ;;
+    none|nohand|no-hand|off)
+      FA_HAND=none
+      FA_HAND_CONFIG=""
+      FA_XHAND1_CONFIG=""
+      return 0
+      ;;
     *)
-      echo "未知手型: ${hand}（应为 xhand1 | wuji | o6 | l6 | o7）"
+      echo "未知手型: ${hand}（应为 xhand1 | wuji | o6 | l6 | o7 | none）"
       return 1
       ;;
   esac
@@ -348,6 +372,7 @@ _prompt_hand_type() {
     o6|linkerhand_o6|linker_o6) current=o6 ;;
     l6|linkerhand_l6|linker_l6) current=l6 ;;
     o7|linkerhand_o7|linker_o7) current=o7 ;;
+    none|nohand|no-hand|off) current=none ;;
     *) current=o6 ;;
   esac
   local default_idx=3
@@ -357,6 +382,7 @@ _prompt_hand_type() {
     o6) default_idx=3 ;;
     l6) default_idx=4 ;;
     o7) default_idx=5 ;;
+    none) default_idx=6 ;;
   esac
 
   echo ""
@@ -366,9 +392,10 @@ _prompt_hand_type() {
   echo "  3) o6"
   echo "  4) l6"
   echo "  5) o7"
+  echo "  6) none     — 无手（仅光学腕控臂，不启 DualHand；fa-w2 可无灵巧手）"
   echo ""
   local choice hand
-  read -r -p "请输入选项 [1-5] (默认: ${default_idx}=${current}): " choice
+  read -r -p "请输入选项 [1-6] (默认: ${default_idx}=${current}): " choice
   choice="${choice:-$default_idx}"
   case "${choice}" in
     1) hand=xhand1 ;;
@@ -376,18 +403,24 @@ _prompt_hand_type() {
     3) hand=o6 ;;
     4) hand=l6 ;;
     5) hand=o7 ;;
+    6) hand=none ;;
     *) echo "无效选项"; exit 1 ;;
   esac
   _apply_fa_hand "$hand" || exit 1
-  _save_local_hand_type "$hand"
-  echo ">>> 已选手型: FA_HAND=${FA_HAND} → ${FA_HAND_CONFIG}"
+  # Do not write none into local.yaml hands.type (would break next hand load).
+  if [[ "$hand" != "none" ]]; then
+    _save_local_hand_type "$hand"
+    echo ">>> 已选手型: FA_HAND=${FA_HAND} → ${FA_HAND_CONFIG}"
+  else
+    echo ">>> 已选: 无手（wrist --no-hands；local.yaml 手型保持不变）"
+  fi
 }
 
 _prompt_vr_xrt_preset() {
   echo ""
   echo "请选择 XRT 追踪预置:"
   echo "  1) controller — 手柄 6DoF 控臂 + 扳机夹爪"
-  echo "  2) wrist      — 光学腕 6DoF 控臂 + 灵巧手（空手手势，关扳机）"
+  echo "  2) wrist      — 光学腕 6DoF 控臂（选手型；可选无手）"
   echo ""
   local choice
   read -r -p "请输入选项 [1-2] (默认: 1): " choice
