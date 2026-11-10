@@ -539,7 +539,7 @@ read_project_name_version() {
 }
 
 show_library_versions() {
-  local libs=("ros2-viser" "vr_pose_publisher" "ros2_robot_interface")
+  local libs=("ros2-viser" "vr_pose_publisher" "ros2_robot_interface" "xr_hand_retarget")
   local lib_dir pyproject info project_name project_version
 
   fa_env_load_config "$ROOT_DIR"

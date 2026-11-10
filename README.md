@@ -11,7 +11,7 @@
 
 - `init.sh`：初始化（子模块、按 backend 建环境、依赖安装）
 - `run.sh`：快速启动（按配置激活环境后启动常用入口）
-- `configs/local.yaml`：本机换手与遥操白名单参数（从 `local.yaml.example` 复制）
+- `configs/local.yaml`：本机换手与遥操白名单参数（从 `local.yaml.example` 复制；已 gitignore）
 - `configs/local_xr.sh`：`run.sh` 读取的本地 XR 路径 / 手型映射
 - `scripts/vr-bag.sh`：VR `/teleop/*` ros2 bag 录制 / 回放 / 清理
 - `release.sh`：发布打包（更新子模块后生成 zip → `dist/`）
@@ -79,13 +79,15 @@ cp configs/local.yaml.example configs/local.yaml   # 改 hands.type
 ```bash
 ./run.sh vr-xrt-service
 ./run.sh vr-xrt wrist          # 交互选手型，或事先设好 local.yaml
-# 临时换手：
+# 临时换手 / 仅光学腕（无灵巧手）：
 FA_HAND=o6 ./run.sh vr-xrt wrist
+FA_HAND=none ./run.sh vr-xrt wrist
+# 等价：./run.sh vr-xrt wrist --no-hands
 ```
 
 ## 本地 XR / 换手配置
 
-**本机只改** `configs/local.yaml`（无则从 example 复制）。优先级：`FA_HAND` / `FA_HAND_CONFIG` 环境变量 > `local.yaml`。
+**本机只改** `configs/local.yaml`（已 gitignore；无则从 `local.yaml.example` 复制）。优先级：`FA_HAND` / `FA_HAND_CONFIG` 环境变量 > `local.yaml`。
 
 ```yaml
 hands:
@@ -107,6 +109,7 @@ command:
 | `xhand1` | `vector` | AnyDex KeyVector |
 | `o6` / `l6` / `o7` | `curl` | Linker 手套 curl |
 | `wuji` | `official` | 需先 `./init.sh install-wuji-retargeting` |
+| `none`（仅 env / `--no-hands`） | — | 只发光学腕 EE，不启灵巧手；不写入 `local.yaml` |
 
 完整白名单与顺畅度旋钮见 [xr_hand_retarget/docs/user/SWITCH.md](xr_hand_retarget/docs/user/SWITCH.md)。
 
@@ -118,7 +121,7 @@ command:
 |------|------|------|
 | 可视化 | `viser` | 启动 ros2-viser |
 | VR 遥操 | `vr` | vr_pose_publisher（Vuer/WebXR） |
-| VR 遥操 | `vr-xrt [controller\|wrist]` | XRoboToolkit：`controller`=手柄+夹爪；`wrist`=光学腕+灵巧手 |
+| VR 遥操 | `vr-xrt [controller\|wrist]` | XRoboToolkit：`controller`=手柄+夹爪；`wrist`=光学腕+灵巧手（可 `--no-hands`） |
 | VR 遥操 | `vr-xrt-service [start\|stop]` | 启动 / 关闭 XRoboToolkit PC Service |
 | VR 辅助 | `vr-update` | 临时发右摇杆 UPDATE（`controller_state=4`；须已 OCS2） |
 | VR 辅助 | `vr-ocs2` | 临时发 OCS2（`/fsm_command=3`，无脚踏板时用） |
@@ -233,6 +236,8 @@ command:
 ./run.sh vr-xrt controller
 ./run.sh vr-xrt wrist
 FA_HAND=o6 ./run.sh vr-xrt wrist
+FA_HAND=none ./run.sh vr-xrt wrist
+./run.sh vr-xrt wrist --no-hands
 ./run.sh vr-update
 ./run.sh vr-ocs2
 ./run.sh vr-record

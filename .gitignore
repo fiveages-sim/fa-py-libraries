@@ -20,3 +20,6 @@ __pycache__/
 
 # Local hand retarget test overlays (not shipped)
 xr_hand_retarget/configs/tests/
+
+# Machine-local XR / hand whitelist (copy from local.yaml.example)
+configs/local.yaml

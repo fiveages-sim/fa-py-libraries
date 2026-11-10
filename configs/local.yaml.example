@@ -50,5 +50,6 @@ command:
 # 跑：
 #   ./run.sh vr-xrt wrist
 #   FA_HAND=o6 ./run.sh vr-xrt wrist
+#   FA_HAND=none ./run.sh vr-xrt wrist          # 仅光学腕；或 --no-hands
 #   python3 scripts/teleop_probe.py --sec 5 --csv /tmp/hand.csv
 # ---------------------------------------------------------------------------

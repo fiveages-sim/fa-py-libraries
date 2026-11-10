@@ -27,8 +27,10 @@ hands:
 | `xhand1` | `vector` | AnyDex KeyVector |
 | `o6` / `l6` / `o7` | `curl` | 手套 curl |
 | `wuji` | `official` | Wuji SDK |
+| `none`（仅 env / CLI） | — | 仅光学腕 EE，不启灵巧手 |
 
-临时：`FA_HAND=o6 ./run.sh vr-xrt wrist`。
+临时：`FA_HAND=o6 ./run.sh vr-xrt wrist`。  
+无手：`FA_HAND=none ./run.sh vr-xrt wrist` 或 `./run.sh vr-xrt wrist --no-hands`（不会把 `none` 写入 `local.yaml`）。
 
 ### 顺畅度 + 发布节拍
 
