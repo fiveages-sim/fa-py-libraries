@@ -123,7 +123,7 @@ class DualHandRetargetNode(Node):
         retargeting_type: str | None = None,
         auto_movej: bool = False,
         fsm_topic: str | None = None,
-        print_every: float = 1.0,
+        print_every: float = 0.0,
         node_name: str = "xr_hand_retarget",
         right_cfg: HandRuntimeConfig | None = None,
         right_retargeting: str | None = None,

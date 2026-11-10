@@ -44,9 +44,10 @@ usage() {
   echo
   echo "VR 遥操:"
   echo "  vr                       启动 vr_pose_publisher（Vuer/WebXR）"
+  echo "  vr-hand                  交互选手型后启动手部遥操（光学腕 + 灵巧手）"
   echo "  vr-xrt [controller|wrist]  启动 XRoboToolkit"
   echo "                           controller=手柄 6DoF 控臂+夹爪"
-  echo "                           wrist=光学腕 6DoF 控臂；交互菜单再选手型（含无手）"
+  echo "                           wrist=光学腕 6DoF 控臂；可选手型（含无手）"
   echo "                           例: ./run.sh vr-xrt wrist"
   echo "                               ./run.sh vr-xrt wrist --no-hands   # 仅腕，不启灵巧手"
   echo "  vr-xrt-service [start]   启动 XRoboToolkit PC Service（runService.sh）"
@@ -387,12 +388,12 @@ _prompt_hand_type() {
 
   echo ""
   echo "请选择灵巧手 (上次: ${current}):"
-  echo "  1) xhand1"
-  echo "  2) wuji"
-  echo "  3) o6"
-  echo "  4) l6"
-  echo "  5) o7"
-  echo "  6) none     — 无手（仅光学腕控臂，不启 DualHand；fa-w2 可无灵巧手）"
+  echo "  1) xhand1   — XHand1（vector）"
+  echo "  2) wuji     — Wuji Hand2（official）"
+  echo "  3) o6       — Linker O6（curl）"
+  echo "  4) l6       — Linker L6（curl）"
+  echo "  5) o7       — Linker O7（curl）"
+  echo "  6) none     — 无手（仅光学腕控臂，不启 DualHand）"
   echo ""
   local choice hand
   read -r -p "请输入选项 [1-6] (默认: ${default_idx}=${current}): " choice
@@ -416,23 +417,13 @@ _prompt_hand_type() {
   fi
 }
 
-_prompt_vr_xrt_preset() {
+# 交互：选手型 → 启动光学腕手部遥操（wrist）
+_prompt_hand_teleop() {
   echo ""
-  echo "请选择 XRT 追踪预置:"
-  echo "  1) controller — 手柄 6DoF 控臂 + 扳机夹爪"
-  echo "  2) wrist      — 光学腕 6DoF 控臂（选手型；可选无手）"
-  echo ""
-  local choice
-  read -r -p "请输入选项 [1-2] (默认: 1): " choice
-  choice="${choice:-1}"
-  case "${choice}" in
-    1) run_vr_xrt_launch controller ;;
-    2)
-      _prompt_hand_type
-      run_vr_xrt_launch wrist
-      ;;
-    *) echo "无效选项"; exit 1 ;;
-  esac
+  echo ">>> 手部遥操：光学腕 6DoF 控臂 + 灵巧手"
+  echo ">>> 请确认 PC Service 已运行（./run.sh vr-xrt-service）"
+  _prompt_hand_type
+  run_vr_xrt_launch wrist
 }
 
 # =============================================================================
@@ -569,40 +560,46 @@ interactive_menu() {
   echo "  [可视化]"
   echo "    1) ros2-viser launch"
   echo
-  echo "  [VR 遥操]"
-  echo "    2) vr pose launch (Vuer/WebXR)"
-  echo "    3) vr pose launch (XRoboToolkit)"
+  echo "  [VR遥操 XRoboToolkit]"
+  echo "    2) 手部遥操 (光学腕 + 灵巧手)  — 再选手型"
+  echo "    3) 手柄遥操 (controller)"
   echo "    4) 启动 XRoboToolkit PC Service"
   echo "    5) 关闭 XRoboToolkit PC Service"
-  echo "    6) VR 遥操录包"
-  echo "    7) VR 遥操回放"
-  echo "    8) VR bag 清理"
+  echo
+  echo "  [VR遥操 Web]"
+  echo "    6) vr pose launch (Vuer/WebXR)"
+  echo
+  echo "  [VR遥操 通用]"
+  echo "    7) VR 遥操录包"
+  echo "    8) VR 遥操回放"
+  echo "    9) VR bag 清理"
   echo
   echo "  [机器人关节录放]"
-  echo "    9) interface 录制"
-  echo "    10) interface 回放"
+  echo "    10) interface 录制"
+  echo "    11) interface 回放"
   echo
   echo "  [其他]"
-  echo "    11) 查看各库版本号"
+  echo "    12) 查看各库版本号"
   echo "    q) 退出"
   echo
-  read -r -p "输入选项 [1-11/q]: " choice
+  read -r -p "输入选项 [1-12/q]: " choice
 
   case "$choice" in
     1) run_viser_launch ;;
-    2) run_vr_launch ;;
-    3) _prompt_vr_xrt_preset ;;
+    2) _prompt_hand_teleop ;;
+    3) run_vr_xrt_launch controller ;;
     4) run_xrt_pc_service ;;
     5) stop_xrt_pc_service ;;
-    6) run_vr_bag_record ;;
-    7) run_vr_bag_playback ;;
-    8) run_vr_bag_clean ;;
-    9) run_interface_record ;;
-    10)
+    6) run_vr_launch ;;
+    7) run_vr_bag_record ;;
+    8) run_vr_bag_playback ;;
+    9) run_vr_bag_clean ;;
+    10) run_interface_record ;;
+    11)
       read -r -p "可选：输入回放 json 文件路径（留空则启动后自行选择）: " json_file
       run_interface_playback "${json_file:-}"
       ;;
-    11) show_library_versions ;;
+    12) show_library_versions ;;
     q|Q) echo "已退出。" ;;
     *) echo "无效选项。"; exit 1 ;;
   esac
@@ -615,6 +612,9 @@ main() {
       ;;
     vr)
       run_vr_launch
+      ;;
+    vr-hand|hand-teleop)
+      _prompt_hand_teleop
       ;;
     vr-xrt-service|xrt-service)
       run_xrt_pc_service_cmd "${2:-start}"

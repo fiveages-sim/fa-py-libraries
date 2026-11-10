@@ -121,6 +121,7 @@ command:
 |------|------|------|
 | 可视化 | `viser` | 启动 ros2-viser |
 | VR 遥操 | `vr` | vr_pose_publisher（Vuer/WebXR） |
+| VR 遥操 | `vr-hand` | 交互选手型后启动手部遥操（光学腕 + 灵巧手） |
 | VR 遥操 | `vr-xrt [controller\|wrist]` | XRoboToolkit：`controller`=手柄+夹爪；`wrist`=光学腕+灵巧手（可 `--no-hands`） |
 | VR 遥操 | `vr-xrt-service [start\|stop]` | 启动 / 关闭 XRoboToolkit PC Service |
 | VR 辅助 | `vr-update` | 临时发右摇杆 UPDATE（`controller_state=4`；须已 OCS2） |
@@ -135,18 +136,18 @@ command:
 交互菜单编号：
 
 ```
-  [可视化]        1) ros2-viser launch
-  [VR 遥操]       2) vr pose launch (Vuer/WebXR)
-                  3) vr pose launch (XRoboToolkit)
-                     → 再选 controller / wrist；选 wrist 会再选手型并写入 local.yaml
-                  4) 启动 XRoboToolkit PC Service
-                  5) 关闭 XRoboToolkit PC Service
-                  6) VR 遥操录包
-                  7) VR 遥操回放
-                  8) VR bag 清理
-  [机器人关节录放] 9) interface 录制
-                  10) interface 回放
-  [其他]          11) 查看各库版本号
+  [可视化]           1) ros2-viser launch
+  [VR遥操 XRoboToolkit] 2) 手部遥操 (光学腕 + 灵巧手)  — 再选手型并写入 local.yaml
+                     3) 手柄遥操 (controller)
+                     4) 启动 XRoboToolkit PC Service
+                     5) 关闭 XRoboToolkit PC Service
+  [VR遥操 Web]       6) vr pose launch (Vuer/WebXR)
+  [VR遥操 通用]      7) VR 遥操录包
+                     8) VR 遥操回放
+                     9) VR bag 清理
+  [机器人关节录放]   10) interface 录制
+                     11) interface 回放
+  [其他]             12) 查看各库版本号
 ```
 
 同一 PC Service 只能有一个 SDK 客户端；跑 `vr-xrt` 时不要另开独立的 `xr_hand_retarget` 进程。
