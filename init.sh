@@ -853,7 +853,7 @@ interactive_menu() {
   fi
   echo "   10) 配置 ROS2 工作空间"
   echo "   11) 切换 backend (conda/uv)"
-  echo "   12) 安装官方 wuji-retargeting（无极手 official）"
+  echo "   12) 安装官方 wuji-retargeting"
   echo
   echo "  [其他]"
   echo "    q) 退出"
