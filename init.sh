@@ -22,6 +22,8 @@ declare -A GITEA_ORG_MAP=(
 
 declare -A GITEA_PATH_MAP=(
   ["legubiao/ocs2_ros2"]="Control/ocs2_ros2"
+  # Personal GitHub mirror until transferred under fiveages-sim
+  ["happy1every1day/xr_hand_retarget"]="Control/xr_hand_retarget"
 )
 
 print_usage() {
@@ -48,6 +50,9 @@ print_usage() {
   echo "  --github   使用 GitHub（默认）"
   echo "  --gitea    使用 Gitea 镜像（会按映射规则改写 .gitmodules）"
   echo "  GITEA_BASE_URL 可通过环境变量覆盖，当前: $GITEA_BASE_URL"
+  echo
+  echo "子模块（见 .gitmodules）:"
+  echo "  ros2_robot_interface  ros2-viser  vr_pose_publisher  xr_hand_retarget"
   echo
   echo "不带参数时进入交互菜单。"
   echo "未指定版本时默认使用 Python $DEFAULT_PYTHON_VERSION。"

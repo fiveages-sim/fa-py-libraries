@@ -1,6 +1,6 @@
 # fa-py-libraries
 
-聚合并快速启动以下 ROS2 相关 Python 包：
+聚合并快速启动以下 ROS2 相关 Python 包（均为 git 子模块，由 `./init.sh submodules` 拉取）：
 
 - `ros2_robot_interface` — 机器人接口 / 关节录放
 - `ros2-viser` — 可视化

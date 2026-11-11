@@ -7,3 +7,6 @@
 [submodule "ros2-viser"]
 	path = ros2-viser
 	url = git@github.com:fiveages-sim/ros2-viser.git
+[submodule "xr_hand_retarget"]
+	path = xr_hand_retarget
+	url = git@github.com:happy1every1day/xr_hand_retarget.git

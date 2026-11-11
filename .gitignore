@@ -21,5 +21,9 @@ __pycache__/
 # Local hand retarget test overlays (not shipped)
 xr_hand_retarget/configs/tests/
 
+# On-demand official Wuji solver clone (./init.sh install-wuji-retargeting)
+xr_hand_retarget/third_party/
+third_party/
+
 # Machine-local XR / hand whitelist (copy from local.yaml.example)
 configs/local.yaml
