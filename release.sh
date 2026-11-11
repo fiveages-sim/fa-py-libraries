@@ -27,15 +27,17 @@ usage() {
   **/dependencies/   xr_bags/  joint_records/
   cert.pem  key.pem  *.pem
   __pycache__/  *.pyc  *.egg-info/
-  .fa-env.local.toml
+  .fa-env.local.toml  configs/local.yaml
 
 包含:
-  init.sh  run.sh  release.sh  scripts/  .fa-env.toml  README.md  .gitmodules
-  ros2_robot_interface/  ros2-viser/  vr_pose_publisher/（不含 dependencies/）
+  init.sh  run.sh  release.sh  scripts/  configs/  .fa-env.toml  README.md  .gitmodules
+  ros2_robot_interface/  ros2-viser/  vr_pose_publisher/  xr_hand_retarget/（不含 dependencies/）
 
 现场解压后:
   ./init.sh install
+  cp configs/local.yaml.example configs/local.yaml
   # 可选 XRoboToolkit: ./init.sh install-xrobotoolkit-pc-service && ./init.sh install-xrobotoolkit
+  # wuji-sdk comes with xr_hand_retarget dependencies
 EOF
 }
 
@@ -96,7 +98,10 @@ build_rsync_excludes() {
     --exclude='dependencies/'
     --exclude='xr_bags/'
     --exclude='joint_records/'
+    --exclude='third_party/'
+    --exclude='xr_hand_retarget/third_party/'
     --exclude='.fa-env.local.toml'
+    --exclude='configs/local.yaml'
     --exclude='cert.pem'
     --exclude='key.pem'
     --exclude='*.pem'

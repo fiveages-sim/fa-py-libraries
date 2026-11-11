@@ -14,3 +14,16 @@ joint_records/
 
 # VR 遥操 ros2 bag 录制
 xr_bags/
+
+__pycache__/
+*.py[cod]
+
+# Local hand retarget test overlays (not shipped)
+xr_hand_retarget/configs/tests/
+
+# Optional local clones under third_party/ (not used by wuji-sdk path)
+xr_hand_retarget/third_party/
+third_party/
+
+# Machine-local XR / hand whitelist (copy from local.yaml.example)
+configs/local.yaml

@@ -12,6 +12,17 @@ FA_ENV_BACKEND_OVERRIDE="${FA_ENV_BACKEND:-}"
 source "${ROOT_DIR}/scripts/fa-env.sh"
 FA_ENV_ROOT_DIR="$ROOT_DIR"
 
+# Local XR paths — edit configs/local_xr.sh (env vars already set win).
+# shellcheck source=configs/local_xr.sh
+if [[ -f "${ROOT_DIR}/configs/local_xr.sh" ]]; then
+  source "${ROOT_DIR}/configs/local_xr.sh"
+fi
+FA_XRT_TELEOP_CONFIG="${FA_XRT_TELEOP_CONFIG:-$ROOT_DIR/vr_pose_publisher/configs/xrt_teleop.yaml}"
+FA_HAND_CONFIG="${FA_HAND_CONFIG:-${FA_XHAND1_CONFIG:-$ROOT_DIR/xr_hand_retarget/configs/xhand1.yaml}}"
+FA_XHAND1_CONFIG="${FA_HAND_CONFIG}"
+FA_HAND_RETARGETING="${FA_HAND_RETARGETING:-${FA_XHAND1_RETARGETING:-}}"
+FA_XHAND1_RETARGETING="${FA_HAND_RETARGETING}"
+
 # =============================================================================
 # 帮助
 # =============================================================================
@@ -23,14 +34,26 @@ usage() {
   echo "Python 环境由 .fa-env.toml 的 backend 决定（conda | uv），可用 ./init.sh set-backend 切换。"
   echo "临时覆盖: FA_ENV_BACKEND=uv ./run.sh viser"
   echo
+  echo "本地 XR 配置: configs/local_xr.sh"
+  echo "  configs/local.yaml      → 换手: hands.type = xhand1 | wuji | o6 | l6 | o7"
+  echo "  FA_HAND                 → 临时覆盖 local.yaml（none=无手）"
+  echo "  FA_XRT_TELEOP_CONFIG    → XRT 预置 (xrt_teleop.yaml)"
+  echo
   echo "可视化:"
   echo "  viser                    启动 ros2-viser 的 launch.py"
   echo
   echo "VR 遥操:"
   echo "  vr                       启动 vr_pose_publisher（Vuer/WebXR）"
-  echo "  vr-xrt                   启动 vr_pose_publisher（XRoboToolkit SDK）"
+  echo "  vr-hand                  交互选手型后启动手部遥操（光学腕 + 灵巧手）"
+  echo "  vr-xrt [controller|wrist]  启动 XRoboToolkit"
+  echo "                           controller=手柄 6DoF 控臂+夹爪"
+  echo "                           wrist=光学腕 6DoF 控臂；可选手型（含无手）"
+  echo "                           例: ./run.sh vr-xrt wrist"
+  echo "                               ./run.sh vr-xrt wrist --no-hands   # 仅腕，不启灵巧手"
   echo "  vr-xrt-service [start]   启动 XRoboToolkit PC Service（runService.sh）"
   echo "  vr-xrt-service stop      关闭 XRoboToolkit PC Service"
+  echo "  vr-update                临时发右摇杆 UPDATE（controller_state=4；非 OCS2 无效）"
+  echo "  vr-ocs2                  临时发 OCS2（/fsm_command=3，无脚踏板时用）"
   echo "  vr-record [--name 名称]  录制 /teleop/* 话题到 ros2 bag"
   echo "  vr-playback [选项]       回放 bag（可选 --file --rate --count）"
   echo "  vr-bag-clean [选项]      清理已录制的 bag"
@@ -191,9 +214,216 @@ run_vr_xrt_launch() {
     echo ">>> 可先运行: ./run.sh vr-xrt-service"
     echo ">>> 或从应用菜单打开 XRoboToolkit-PC-Service"
   fi
+
+  if [[ $# -eq 0 ]]; then
+    echo ">>> 启动 vr pose launch (XRoboToolkit)"
+    echo ">>> 请确认: PC Service 已运行，Pico App 已连接"
+    python "$script_path"
+    return
+  fi
+
+  local extra=()
+  local has_config=0 has_hand_config=0 has_hand_retargeting=0 has_no_hands=0
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --config|--config=*) has_config=1 ;;
+      --hand-config|--hand-config=*) has_hand_config=1 ;;
+      --hand-retargeting|--hand-retargeting=*) has_hand_retargeting=1 ;;
+      --no-hands) has_no_hands=1 ;;
+    esac
+  done
+  # FA_HAND=none → optical wrist EE only (fa-w2 may run without dexterous hand).
+  if [[ "${FA_HAND:-}" == "none" || "${FA_HAND:-}" == "nohand" || "${FA_HAND:-}" == "no-hand" ]]; then
+    has_no_hands=1
+  fi
+  if [[ $has_config -eq 0 && -n "${FA_XRT_TELEOP_CONFIG:-}" ]]; then
+    if [[ ! -f "$FA_XRT_TELEOP_CONFIG" ]]; then
+      echo "未找到 FA_XRT_TELEOP_CONFIG: $FA_XRT_TELEOP_CONFIG"
+      echo "请编辑 configs/local_xr.sh"
+      exit 1
+    fi
+    extra+=(--config "$FA_XRT_TELEOP_CONFIG")
+  fi
+  if [[ $has_no_hands -eq 1 ]]; then
+    # Skip hand-config; ensure --no-hands reaches the node even if only FA_HAND=none.
+    local has_no_hands_arg=0
+    for arg in "$@"; do
+      [[ "$arg" == "--no-hands" ]] && has_no_hands_arg=1
+    done
+    [[ $has_no_hands_arg -eq 0 ]] && extra+=(--no-hands)
+  elif [[ $has_hand_config -eq 0 && -n "${FA_HAND_CONFIG:-}" ]]; then
+    if [[ ! -f "$FA_HAND_CONFIG" ]]; then
+      echo "未找到 FA_HAND_CONFIG: $FA_HAND_CONFIG"
+      echo "请编辑 configs/local_xr.sh"
+      exit 1
+    fi
+    extra+=(--hand-config "$FA_HAND_CONFIG")
+  fi
+  if [[ $has_no_hands -eq 0 && $has_hand_retargeting -eq 0 && -n "${FA_HAND_RETARGETING:-}" ]]; then
+    extra+=(--hand-retargeting "$FA_HAND_RETARGETING")
+  fi
+
   echo ">>> 启动 vr pose launch (XRoboToolkit)"
   echo ">>> 请确认: PC Service 已运行，Pico App 已连接"
-  python "$script_path"
+  if [[ $# -gt 0 || ${#extra[@]} -gt 0 ]]; then
+    echo ">>> 同一 PC Service 只能有一个 SDK 客户端；不要再另开 xr_hand_retarget"
+    echo ">>> local_xr: teleop=$FA_XRT_TELEOP_CONFIG"
+    if [[ $has_no_hands -eq 1 ]]; then
+      echo ">>> local_xr: hand=none (--no-hands，仅光学腕 EE)"
+    else
+      echo ">>> local_xr: hand=${FA_HAND:-?} $FA_HAND_CONFIG"
+      if [[ -n "${FA_HAND_RETARGETING:-}" ]]; then
+        echo ">>> local_xr: retargeting override=$FA_HAND_RETARGETING"
+      fi
+    fi
+    echo ">>> 参数: ${extra[*]} $*"
+  fi
+  python "$script_path" "${extra[@]}" "$@"
+}
+
+_ros2_topic_pub_once() {
+  local topic="$1"
+  local type="$2"
+  local payload="$3"
+  ensure_python_env
+  if ! command -v ros2 >/dev/null 2>&1; then
+    echo "未找到 ros2。请先 source ROS2 / 工作空间，然后执行:"
+    echo "  ros2 topic pub --once ${topic} ${type} \"${payload}\""
+    exit 1
+  fi
+  echo ">>> ros2 topic pub --once ${topic} ${type} \"${payload}\""
+  ros2 topic pub --once "${topic}" "${type}" "${payload}"
+}
+
+run_vr_update() {
+  echo ">>> 临时 UPDATE：右摇杆 /teleop/controller_state=4（须已 OCS2，否则 VRInputHandler 忽略）"
+  _ros2_topic_pub_once /teleop/controller_state std_msgs/msg/Int32 "{data: 4}"
+}
+
+run_vr_ocs2() {
+  echo ">>> 临时 OCS2（等同脚踏板长按 F15）"
+  _ros2_topic_pub_once /fsm_command std_msgs/msg/Int32 "{data: 3}"
+}
+
+# Apply FA_HAND → FA_HAND_CONFIG (same mapping as configs/local_xr.sh).
+# none = optical wrist EE only (no DualHand / fa-w2 hand topics).
+_apply_fa_hand() {
+  local hand="${1:?}"
+  case "${hand}" in
+    xhand1|xhand) hand=xhand1; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/xhand1.yaml" ;;
+    wuji|wuji_hand2|hand2) hand=wuji; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/wuji_hand2.yaml" ;;
+    o6|linkerhand_o6|linker_o6) hand=o6; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/o6.yaml" ;;
+    l6|linkerhand_l6|linker_l6) hand=l6; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/l6.yaml" ;;
+    o7|linkerhand_o7|linker_o7) hand=o7; _FA_HAND_YAML="$ROOT_DIR/xr_hand_retarget/configs/o7.yaml" ;;
+    none|nohand|no-hand|off)
+      FA_HAND=none
+      FA_HAND_CONFIG=""
+      FA_XHAND1_CONFIG=""
+      return 0
+      ;;
+    *)
+      echo "未知手型: ${hand}（应为 xhand1 | wuji | o6 | l6 | o7 | none）"
+      return 1
+      ;;
+  esac
+  FA_HAND="$hand"
+  FA_HAND_CONFIG="$_FA_HAND_YAML"
+  FA_XHAND1_CONFIG="$FA_HAND_CONFIG"
+}
+
+# Persist last hand choice to configs/local.yaml (create from example if missing).
+_save_local_hand_type() {
+  local hand="$1"
+  local f="$ROOT_DIR/configs/local.yaml"
+  local ex="$ROOT_DIR/configs/local.yaml.example"
+  if [[ ! -f "$f" ]]; then
+    if [[ -f "$ex" ]]; then
+      cp "$ex" "$f"
+    else
+      printf 'hands:\n  type: %s\n' "$hand" >"$f"
+      return 0
+    fi
+  fi
+  python3 - "$f" "$hand" <<'PY'
+from pathlib import Path
+import re, sys
+path, hand = Path(sys.argv[1]), sys.argv[2]
+text = path.read_text(encoding="utf-8")
+new, n = re.subn(
+    r"(?m)^([ \t]*type:\s*)([A-Za-z0-9_+-]+)",
+    rf"\g<1>{hand}",
+    text,
+    count=1,
+)
+if n == 0:
+    if re.search(r"(?m)^hands:\s*$", text):
+        new = re.sub(r"(?m)^(hands:\s*)$", rf"\1\n  type: {hand}", text, count=1)
+    else:
+        new = text.rstrip() + f"\n\nhands:\n  type: {hand}\n"
+path.write_text(new, encoding="utf-8")
+PY
+}
+
+_prompt_hand_type() {
+  local current="${FA_HAND:-o6}"
+  case "${current}" in
+    xhand1|xhand) current=xhand1 ;;
+    wuji|wuji_hand2|hand2) current=wuji ;;
+    o6|linkerhand_o6|linker_o6) current=o6 ;;
+    l6|linkerhand_l6|linker_l6) current=l6 ;;
+    o7|linkerhand_o7|linker_o7) current=o7 ;;
+    none|nohand|no-hand|off) current=none ;;
+    *) current=o6 ;;
+  esac
+  local default_idx=3
+  case "${current}" in
+    xhand1) default_idx=1 ;;
+    wuji) default_idx=2 ;;
+    o6) default_idx=3 ;;
+    l6) default_idx=4 ;;
+    o7) default_idx=5 ;;
+    none) default_idx=6 ;;
+  esac
+
+  echo ""
+  echo "请选择灵巧手 (上次: ${current}):"
+  echo "  1) xhand1   — XHand1（vector）"
+  echo "  2) wuji     — Wuji Hand2（official）"
+  echo "  3) o6       — Linker O6（curl）"
+  echo "  4) l6       — Linker L6（curl）"
+  echo "  5) o7       — Linker O7（curl）"
+  echo "  6) none     — 无手（仅光学腕控臂，不启 DualHand）"
+  echo ""
+  local choice hand
+  read -r -p "请输入选项 [1-6] (默认: ${default_idx}=${current}): " choice
+  choice="${choice:-$default_idx}"
+  case "${choice}" in
+    1) hand=xhand1 ;;
+    2) hand=wuji ;;
+    3) hand=o6 ;;
+    4) hand=l6 ;;
+    5) hand=o7 ;;
+    6) hand=none ;;
+    *) echo "无效选项"; exit 1 ;;
+  esac
+  _apply_fa_hand "$hand" || exit 1
+  # Do not write none into local.yaml hands.type (would break next hand load).
+  if [[ "$hand" != "none" ]]; then
+    _save_local_hand_type "$hand"
+    echo ">>> 已选手型: FA_HAND=${FA_HAND} → ${FA_HAND_CONFIG}"
+  else
+    echo ">>> 已选: 无手（wrist --no-hands；local.yaml 手型保持不变）"
+  fi
+}
+
+# 交互：选手型 → 启动光学腕手部遥操（wrist）
+_prompt_hand_teleop() {
+  echo ""
+  echo ">>> 手部遥操：光学腕 6DoF 控臂 + 灵巧手"
+  echo ">>> 请确认 PC Service 已运行（./run.sh vr-xrt-service）"
+  _prompt_hand_type
+  run_vr_xrt_launch wrist
 }
 
 # =============================================================================
@@ -300,7 +530,7 @@ read_project_name_version() {
 }
 
 show_library_versions() {
-  local libs=("ros2-viser" "vr_pose_publisher" "ros2_robot_interface")
+  local libs=("ros2-viser" "vr_pose_publisher" "ros2_robot_interface" "xr_hand_retarget")
   local lib_dir pyproject info project_name project_version
 
   fa_env_load_config "$ROOT_DIR"
@@ -330,40 +560,46 @@ interactive_menu() {
   echo "  [可视化]"
   echo "    1) ros2-viser launch"
   echo
-  echo "  [VR 遥操]"
-  echo "    2) vr pose launch (Vuer/WebXR)"
-  echo "    3) vr pose launch (XRoboToolkit)"
+  echo "  [VR遥操 XRoboToolkit]"
+  echo "    2) 手部遥操 (光学腕 + 灵巧手)  — 再选手型"
+  echo "    3) 手柄遥操 (controller)"
   echo "    4) 启动 XRoboToolkit PC Service"
   echo "    5) 关闭 XRoboToolkit PC Service"
-  echo "    6) VR 遥操录包"
-  echo "    7) VR 遥操回放"
-  echo "    8) VR bag 清理"
+  echo
+  echo "  [VR遥操 Web]"
+  echo "    6) vr pose launch (Vuer/WebXR)"
+  echo
+  echo "  [VR遥操 通用]"
+  echo "    7) VR 遥操录包"
+  echo "    8) VR 遥操回放"
+  echo "    9) VR bag 清理"
   echo
   echo "  [机器人关节录放]"
-  echo "    9) interface 录制"
-  echo "    10) interface 回放"
+  echo "    10) interface 录制"
+  echo "    11) interface 回放"
   echo
   echo "  [其他]"
-  echo "    11) 查看各库版本号"
+  echo "    12) 查看各库版本号"
   echo "    q) 退出"
   echo
-  read -r -p "输入选项 [1-11/q]: " choice
+  read -r -p "输入选项 [1-12/q]: " choice
 
   case "$choice" in
     1) run_viser_launch ;;
-    2) run_vr_launch ;;
-    3) run_vr_xrt_launch ;;
+    2) _prompt_hand_teleop ;;
+    3) run_vr_xrt_launch controller ;;
     4) run_xrt_pc_service ;;
     5) stop_xrt_pc_service ;;
-    6) run_vr_bag_record ;;
-    7) run_vr_bag_playback ;;
-    8) run_vr_bag_clean ;;
-    9) run_interface_record ;;
-    10)
+    6) run_vr_launch ;;
+    7) run_vr_bag_record ;;
+    8) run_vr_bag_playback ;;
+    9) run_vr_bag_clean ;;
+    10) run_interface_record ;;
+    11)
       read -r -p "可选：输入回放 json 文件路径（留空则启动后自行选择）: " json_file
       run_interface_playback "${json_file:-}"
       ;;
-    11) show_library_versions ;;
+    12) show_library_versions ;;
     q|Q) echo "已退出。" ;;
     *) echo "无效选项。"; exit 1 ;;
   esac
@@ -377,6 +613,9 @@ main() {
     vr)
       run_vr_launch
       ;;
+    vr-hand|hand-teleop)
+      _prompt_hand_teleop
+      ;;
     vr-xrt-service|xrt-service)
       run_xrt_pc_service_cmd "${2:-start}"
       ;;
@@ -384,7 +623,13 @@ main() {
       stop_xrt_pc_service
       ;;
     vr-xrt|vr-xrobotoolkit)
-      run_vr_xrt_launch
+      run_vr_xrt_launch "${@:2}"
+      ;;
+    vr-update)
+      run_vr_update
+      ;;
+    vr-ocs2)
+      run_vr_ocs2
       ;;
     vr-record)
       run_vr_bag_record "${@:2}"
