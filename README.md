@@ -61,8 +61,9 @@ workspace = "~/ros2_ws"   # 配置后 run.sh 激活时会 source
 
 ```bash
 cp configs/local.yaml.example configs/local.yaml   # 改 hands.type
-# Wuji official：
+# Wuji official（装完须能 import；见 xr_hand_retarget/docs/algorithms/OFFICIAL.md）：
 ./init.sh install-wuji-retargeting
+python -c 'import wuji_retargeting; print(wuji_retargeting.__file__)'
 # XRoboToolkit（Pico App + PC Service）：
 ./init.sh install-xrobotoolkit-pc-service
 ./init.sh install-xrobotoolkit
@@ -108,7 +109,7 @@ command:
 |--------|------|------|
 | `xhand1` | `vector` | AnyDex KeyVector |
 | `o6` / `l6` / `o7` | `curl` | Linker 手套 curl |
-| `wuji` | `official` | 需先 `./init.sh install-wuji-retargeting` |
+| `wuji` | `official` | 需先 `./init.sh install-wuji-retargeting`，并确认 `import wuji_retargeting` |
 | `none`（仅 env / `--no-hands`） | — | 只发光学腕 EE，不启灵巧手；不写入 `local.yaml` |
 
 完整白名单与顺畅度旋钮见 [xr_hand_retarget/docs/user/SWITCH.md](xr_hand_retarget/docs/user/SWITCH.md)。

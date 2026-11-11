@@ -472,6 +472,7 @@ install_wuji_retargeting() {
     esac
   )
   echo ">>> wuji-retargeting 安装完成。手型配置: xr_hand_retarget/configs/wuji_hand2.yaml"
+  echo ">>> 自检（须与 run.sh 同一环境）: python -c 'import wuji_retargeting; print(wuji_retargeting.__file__)'"
 }
 
 # Official PC Service debs from https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases
