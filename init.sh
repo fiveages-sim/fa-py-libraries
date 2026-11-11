@@ -22,8 +22,6 @@ declare -A GITEA_ORG_MAP=(
 
 declare -A GITEA_PATH_MAP=(
   ["legubiao/ocs2_ros2"]="Control/ocs2_ros2"
-  # Personal GitHub mirror until transferred under fiveages-sim
-  ["happy1every1day/xr_hand_retarget"]="Control/xr_hand_retarget"
 )
 
 print_usage() {
