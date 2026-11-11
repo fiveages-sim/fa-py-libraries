@@ -21,7 +21,7 @@ __pycache__/
 # Local hand retarget test overlays (not shipped)
 xr_hand_retarget/configs/tests/
 
-# On-demand official Wuji solver clone (./init.sh install-wuji-retargeting)
+# Optional local clones under third_party/ (not used by wuji-sdk path)
 xr_hand_retarget/third_party/
 third_party/
 

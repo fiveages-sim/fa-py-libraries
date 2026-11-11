@@ -13,29 +13,18 @@ ENV_NAME="fa-ros2"
 DEFAULT_PYTHON_VERSION="3.12"
 INSTALL_BACKEND_OVERRIDE=""
 PYTHON_VERSION="${PYTHON_VERSION:-}"
-GITEA_BASE_URL="${GITEA_BASE_URL:-ssh://git@192.168.110.50:2222/}"
-GITHUB_BASE_URL="git@github.com:"
-
-declare -A GITEA_ORG_MAP=(
-  ["fiveages-sim"]="Control"
-)
-
-declare -A GITEA_PATH_MAP=(
-  ["legubiao/ocs2_ros2"]="Control/ocs2_ros2"
-)
 
 print_usage() {
-  echo "用法: $0 [submodules [--github|--gitea]|update-submodules-main|env [python版本]|install [--conda|--uv]|"
+  echo "用法: $0 [submodules|update-submodules-main|env [python版本]|install [--conda|--uv]|"
   echo "      install-xrobotoolkit [--conda|--uv]|install-xrobotoolkit-pc-service|"
   echo "      set-backend conda|uv|install-uv|install-miniconda|"
-  echo "      pypi-mirror|uv-mirror|ros2-workspace [--all]|all [python版本] [--github|--gitea]]"
+  echo "      pypi-mirror|uv-mirror|ros2-workspace [--all]|all [python版本]]"
   echo
   echo "环境:"
   echo "  env            按 .fa-env.toml 的 backend 创建环境"
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
   echo "  install-xrobotoolkit-pc-service  安装官方 XRoboToolkit-PC-Service deb（按 arch / Ubuntu 版本下载）"
   echo "  install-xrobotoolkit  安装 PC Service（若未装）+ PyPI xrobotoolkit-sdk>=1.1.0"
-  echo "  install-wuji-retargeting  安装官方 wuji-retargeting 到 xr_hand_retarget/third_party/，并钉死 numpy<2"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
   echo "  install-miniconda  安装 Miniconda 到 ~/miniconda3 并关闭 base 自动激活"
@@ -44,11 +33,6 @@ print_usage() {
   echo "  ros2-workspace 按 backend 写对应 activate 挂钩；--all 则 conda+uv 都写"
   echo "  配置见 .fa-env.toml；个人覆盖: .fa-env.local.toml；临时: FA_ENV_BACKEND=uv"
   echo
-  echo "子模块源:"
-  echo "  --github   使用 GitHub（默认）"
-  echo "  --gitea    使用 Gitea 镜像（会按映射规则改写 .gitmodules）"
-  echo "  GITEA_BASE_URL 可通过环境变量覆盖，当前: $GITEA_BASE_URL"
-  echo
   echo "子模块（见 .gitmodules）:"
   echo "  ros2_robot_interface  ros2-viser  vr_pose_publisher  xr_hand_retarget"
   echo
@@ -56,165 +40,12 @@ print_usage() {
   echo "未指定版本时默认使用 Python $DEFAULT_PYTHON_VERSION。"
 }
 
-extract_github_path() {
-  local github_url=$1
-  echo "$github_url" | sed -E "s|^[^:]+://[^/]+/||; s|^[^:]+:||; s|\.git$||"
-}
-
-extract_gitea_path() {
-  local gitea_url=$1
-  local base_url_no_trailing
-  local path
-  base_url_no_trailing="$(echo "$GITEA_BASE_URL" | sed 's|/$||')"
-  path="$(echo "$gitea_url" | sed "s|^$base_url_no_trailing||; s|^$GITEA_BASE_URL||")"
-  path="$(echo "$path" | sed 's|\.git$||; s|^/||')"
-  echo "$path"
-}
-
-convert_to_gitea_url() {
-  local github_url=$1
-  local github_path
-  local gitea_path
-  local github_org
-  local github_repo
-  local gitea_org
-  local base_url
-  github_path="$(extract_github_path "$github_url")"
-  gitea_path="${GITEA_PATH_MAP[$github_path]:-}"
-
-  if [[ -z "$gitea_path" ]]; then
-    github_org="$(echo "$github_path" | cut -d'/' -f1)"
-    github_repo="$(echo "$github_path" | cut -d'/' -f2-)"
-    gitea_org="${GITEA_ORG_MAP[$github_org]:-}"
-    if [[ -n "$gitea_org" ]]; then
-      gitea_path="${gitea_org}/${github_repo}"
-    else
-      gitea_path="$github_path"
-    fi
-  fi
-
-  base_url="$(echo "$GITEA_BASE_URL" | sed 's|/$||')"
-  if echo "$GITEA_BASE_URL" | grep -qE "^https?://"; then
-    [[ "$gitea_path" =~ ^/ ]] || gitea_path="/${gitea_path}"
-    echo "${base_url}${gitea_path}"
-  elif echo "$GITEA_BASE_URL" | grep -qE "^ssh://"; then
-    [[ "$gitea_path" =~ ^/ ]] || gitea_path="/${gitea_path}"
-    echo "${base_url}${gitea_path}.git"
-  else
-    echo "${base_url}${gitea_path}.git"
-  fi
-}
-
-convert_to_github_url() {
-  local gitea_url=$1
-  local gitea_path
-  local github_path=""
-  local gitea_org
-  local gitea_repo
-  local key
-  gitea_path="$(extract_gitea_path "$gitea_url")"
-
-  for key in "${!GITEA_PATH_MAP[@]}"; do
-    if [[ "${GITEA_PATH_MAP[$key]}" == "$gitea_path" ]]; then
-      github_path="$key"
-      break
-    fi
-  done
-
-  if [[ -z "$github_path" ]]; then
-    gitea_org="$(echo "$gitea_path" | cut -d'/' -f1)"
-    gitea_repo="$(echo "$gitea_path" | cut -d'/' -f2-)"
-    for key in "${!GITEA_ORG_MAP[@]}"; do
-      if [[ "${GITEA_ORG_MAP[$key]}" == "$gitea_org" ]]; then
-        github_path="${key}/${gitea_repo}"
-        break
-      fi
-    done
-    [[ -n "$github_path" ]] || github_path="$gitea_path"
-  fi
-
-  echo "${GITHUB_BASE_URL}${github_path}.git"
-}
-
-update_submodule_urls() {
-  local source_type="${1:-github}"
-  local submodule_paths=()
-  local submodule_path
-  local current_url
-  local new_url
-  local gitea_host
-  local key
-
-  while IFS= read -r submodule_path; do
-    submodule_paths+=("$submodule_path")
-  done < <(git -C "$ROOT_DIR" config --file .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
-
-  if [[ "$source_type" == "gitea" ]]; then
-    echo ">>> 切换子模块源到 Gitea..."
-    gitea_host="$(echo "$GITEA_BASE_URL" | sed -E 's|^https?://||; s|^ssh://||; s|^git@||; s|:.*$||; s|/.*$||')"
-    for submodule_path in "${submodule_paths[@]}"; do
-      current_url="$(git -C "$ROOT_DIR" config --file .gitmodules --get "submodule.$submodule_path.url")"
-      [[ -n "$current_url" ]] || continue
-      if echo "$current_url" | grep -qE "^https?://.*${gitea_host}" || \
-         echo "$current_url" | grep -qE "^ssh://.*${gitea_host}" || \
-         echo "$current_url" | grep -q "^git@.*${gitea_host}"; then
-        continue
-      fi
-      new_url="$(convert_to_gitea_url "$current_url")"
-      if [[ "$current_url" != "$new_url" ]]; then
-        echo "    $submodule_path"
-        echo "      GitHub: $current_url"
-        echo "      Gitea:  $new_url"
-        git -C "$ROOT_DIR" config --file .gitmodules "submodule.$submodule_path.url" "$new_url"
-      fi
-    done
-  else
-    echo ">>> 切换子模块源到 GitHub..."
-    gitea_host="$(echo "$GITEA_BASE_URL" | sed -E 's|^https?://||; s|^ssh://||; s|^git@||; s|:.*$||; s|/.*$||')"
-    for submodule_path in "${submodule_paths[@]}"; do
-      current_url="$(git -C "$ROOT_DIR" config --file .gitmodules --get "submodule.$submodule_path.url")"
-      [[ -n "$current_url" ]] || continue
-      if echo "$current_url" | grep -qE "^https?://.*${gitea_host}" || \
-         echo "$current_url" | grep -qE "^ssh://.*${gitea_host}" || \
-         echo "$current_url" | grep -q "^git@.*${gitea_host}"; then
-        new_url="$(convert_to_github_url "$current_url")"
-        if [[ "$current_url" != "$new_url" ]]; then
-          echo "    $submodule_path"
-          echo "      Gitea:  $current_url"
-          echo "      GitHub: $new_url"
-          git -C "$ROOT_DIR" config --file .gitmodules "submodule.$submodule_path.url" "$new_url"
-        fi
-      fi
-    done
-  fi
-
-  git -C "$ROOT_DIR" submodule sync --recursive
-}
-
-parse_source_type() {
-  local source_type="github"
-  local arg
-  for arg in "$@"; do
-    case "$arg" in
-      --github) source_type="github" ;;
-      --gitea) source_type="gitea" ;;
-      *)
-        echo "未知参数: $arg"
-        print_usage
-        exit 1
-        ;;
-    esac
-  done
-  echo "$source_type"
-}
-
 init_submodules() {
-  local source_type="${1:-github}"
   local submodule_paths=()
   local path_line
 
   echo ">>> 初始化子模块..."
-  update_submodule_urls "$source_type"
+  git -C "$ROOT_DIR" submodule sync --recursive
   git -C "$ROOT_DIR" submodule update --init --recursive
 
   while IFS= read -r path_line; do
@@ -422,57 +253,6 @@ install_projects() {
     echo ">>> 证书已生成: $vr_dir/cert.pem, $vr_dir/key.pem"
   fi
   echo ">>> 安装完成。"
-}
-
-# Official Wuji solver. ROS Jazzy Pinocchio is built against NumPy 1.x, and the
-# upstream package does not cap numpy, so pin it again after the editable install.
-WUJI_RETARGETING_GIT_URL="https://github.com/wuji-technology/wuji-retargeting.git"
-
-install_wuji_retargeting() {
-  # Lives under xr_hand_retarget/ (not repo-root third_party/).
-  local dest="$ROOT_DIR/xr_hand_retarget/third_party/wuji-retargeting"
-  local legacy="$ROOT_DIR/third_party/wuji-retargeting"
-
-  fa_env_load_config "$ROOT_DIR"
-  if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
-    FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
-  fi
-
-  mkdir -p "$ROOT_DIR/xr_hand_retarget/third_party"
-  # One-shot migrate from old repo-root checkout if new path is empty.
-  if [[ ! -e "$dest" && -d "$legacy/.git" ]]; then
-    echo ">>> 迁移旧路径 $legacy → $dest"
-    mv "$legacy" "$dest"
-    rmdir "$ROOT_DIR/third_party" 2>/dev/null || true
-  fi
-  if [[ -d "$dest/.git" ]]; then
-    echo ">>> 已有 $dest，检出子模块"
-    git -C "$dest" submodule update --init --recursive
-  elif [[ -e "$dest" ]]; then
-    echo "已存在但不是 git 仓库: $dest"
-    exit 1
-  else
-    echo ">>> clone $WUJI_RETARGETING_GIT_URL"
-    git clone --recursive "$WUJI_RETARGETING_GIT_URL" "$dest"
-  fi
-
-  echo ">>> 使用 backend=$FA_ENV_BACKEND 安装 wuji-retargeting，然后钉死 numpy<2"
-  (
-    set +u
-    fa_env_activate "$ROOT_DIR"
-    case "$FA_ENV_BACKEND" in
-      uv)
-        uv pip install -e "$dest"
-        uv pip install 'numpy>=1.26,<2'
-        ;;
-      conda|*)
-        python -m pip install -e "$dest"
-        python -m pip install 'numpy>=1.26,<2'
-        ;;
-    esac
-  )
-  echo ">>> wuji-retargeting 安装完成。手型配置: xr_hand_retarget/configs/wuji_hand2.yaml"
-  echo ">>> 自检（须与 run.sh 同一环境）: python -c 'import wuji_retargeting; print(wuji_retargeting.__file__)'"
 }
 
 # Official PC Service debs from https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases
@@ -809,33 +589,13 @@ create_env_for_configured_backend() {
 
 run_all() {
   local python_version="${1:-}"
-  local source_type="${2:-github}"
   if submodules_have_content; then
     echo ">>> 子模块已存在内容，跳过初始化。"
   else
-    init_submodules "$source_type"
+    init_submodules
   fi
   create_env_for_configured_backend "$python_version"
   install_projects
-}
-
-choose_source_type_menu() {
-  local source_choice
-  SOURCE_TYPE_SELECTED="github"
-  echo "请选择子模块源:"
-  echo
-  echo "    1) GitHub"
-  echo "    2) Gitea"
-  echo
-  read -r -p "输入选项 [1/2]（默认 1）: " source_choice
-  case "${source_choice:-1}" in
-    1) SOURCE_TYPE_SELECTED="github" ;;
-    2) SOURCE_TYPE_SELECTED="gitea" ;;
-    *)
-      echo "无效选项，使用 GitHub。"
-      SOURCE_TYPE_SELECTED="github"
-      ;;
-  esac
 }
 
 interactive_menu() {
@@ -865,17 +625,15 @@ interactive_menu() {
   fi
   echo "   10) 配置 ROS2 工作空间"
   echo "   11) 切换 backend (conda/uv)"
-  echo "   12) 安装官方 wuji-retargeting"
   echo
   echo "  [其他]"
   echo "    q) 退出"
   echo
-  read -r -p "输入选项 [1-12/q]: " choice
+  read -r -p "输入选项 [1-11/q]: " choice
 
   case "$choice" in
     1)
-      choose_source_type_menu
-      init_submodules "$SOURCE_TYPE_SELECTED"
+      init_submodules
       ;;
     2)
       update_submodules_to_latest_main
@@ -893,17 +651,9 @@ interactive_menu() {
     6)
       install_xrobotoolkit
       ;;
-    12)
-      install_wuji_retargeting
-      ;;
     7)
       read -r -p "输入 Python 版本（默认 $DEFAULT_PYTHON_VERSION）: " input_python_version
-      if submodules_have_content; then
-        run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
-      else
-        choose_source_type_menu
-        run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}" "$SOURCE_TYPE_SELECTED"
-      fi
+      run_all "${input_python_version:-$DEFAULT_PYTHON_VERSION}"
       ;;
     8)
       if [[ "$FA_ENV_BACKEND" == "conda" ]]; then
@@ -937,7 +687,7 @@ main() {
   shift || true
   case "$cmd" in
     submodules)
-      init_submodules "$(parse_source_type "$@")"
+      init_submodules
       ;;
     update-submodules-main)
       update_submodules_to_latest_main
@@ -960,10 +710,6 @@ main() {
       parse_install_backend_args "$@"
       install_xrobotoolkit
       ;;
-    install-wuji-retargeting)
-      parse_install_backend_args "$@"
-      install_wuji_retargeting
-      ;;
     install-xrobotoolkit-pc-service)
       install_xrobotoolkit_pc_service "$@"
       ;;
@@ -983,26 +729,12 @@ main() {
       configure_ros2_workspace_source "$@"
       ;;
     all)
-      local python_version_arg=""
-      local source_args=()
-      local arg
-      for arg in "$@"; do
-        case "$arg" in
-          --github|--gitea)
-            source_args+=("$arg")
-            ;;
-          *)
-            if [[ -z "$python_version_arg" ]]; then
-              python_version_arg="$arg"
-            else
-              echo "未知参数: $arg"
-              print_usage
-              exit 1
-            fi
-            ;;
-        esac
-      done
-      run_all "$python_version_arg" "$(parse_source_type "${source_args[@]}")"
+      if [[ -n "${2:-}" ]]; then
+        echo "未知参数: $2"
+        print_usage
+        exit 1
+      fi
+      run_all "${1:-}"
       ;;
     "")
       interactive_menu

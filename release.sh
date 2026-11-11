@@ -37,7 +37,7 @@ usage() {
   ./init.sh install
   cp configs/local.yaml.example configs/local.yaml
   # 可选 XRoboToolkit: ./init.sh install-xrobotoolkit-pc-service && ./init.sh install-xrobotoolkit
-  # Wuji: ./init.sh install-wuji-retargeting
+  # wuji-sdk comes with xr_hand_retarget dependencies
 EOF
 }
 
