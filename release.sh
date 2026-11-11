@@ -98,6 +98,8 @@ build_rsync_excludes() {
     --exclude='dependencies/'
     --exclude='xr_bags/'
     --exclude='joint_records/'
+    --exclude='third_party/'
+    --exclude='xr_hand_retarget/third_party/'
     --exclude='.fa-env.local.toml'
     --exclude='configs/local.yaml'
     --exclude='cert.pem'

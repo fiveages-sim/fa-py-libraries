@@ -1,0 +1,5 @@
+[console_scripts]
+xr-hand-calibrate = xr_hand_retarget.calibrate:main
+xr-hand-retarget = xr_hand_retarget.node:main
+xr-xhand1-calibrate = xr_hand_retarget.calibrate:main
+xr-xhand1-retarget = xr_hand_retarget.node:main

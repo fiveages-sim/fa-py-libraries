@@ -6,12 +6,12 @@
 ./init.sh install-wuji-retargeting
 ```
 
-会 clone 到 `third_party/wuji-retargeting`（含 `wuji-description` 子模块），editable 安装后再钉死 `numpy<2`（ROS Jazzy Pinocchio 与 NumPy 2.x 不兼容）。需要 `pin` 与 `nlopt`。
+会 clone 到 `xr_hand_retarget/third_party/wuji-retargeting`（含 `wuji-description` 子模块），editable 安装后再钉死 `numpy<2`（ROS Jazzy Pinocchio 与 NumPy 2.x 不兼容）。需要 `pin` 与 `nlopt`。
 
 子模块空时：
 
 ```bash
-git -C third_party/wuji-retargeting submodule update --init --recursive
+git -C xr_hand_retarget/third_party/wuji-retargeting submodule update --init --recursive
 ```
 
 镜像装不上 `pin`：

@@ -35,7 +35,7 @@ print_usage() {
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
   echo "  install-xrobotoolkit-pc-service  安装官方 XRoboToolkit-PC-Service deb（按 arch / Ubuntu 版本下载）"
   echo "  install-xrobotoolkit  安装 PC Service（若未装）+ PyPI xrobotoolkit-sdk>=1.1.0"
-  echo "  install-wuji-retargeting  安装官方 wuji-retargeting 到 third_party/，并钉死 numpy<2"
+  echo "  install-wuji-retargeting  安装官方 wuji-retargeting 到 xr_hand_retarget/third_party/，并钉死 numpy<2"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
   echo "  install-miniconda  安装 Miniconda 到 ~/miniconda3 并关闭 base 自动激活"
@@ -426,14 +426,22 @@ install_projects() {
 WUJI_RETARGETING_GIT_URL="https://github.com/wuji-technology/wuji-retargeting.git"
 
 install_wuji_retargeting() {
-  local dest="$ROOT_DIR/third_party/wuji-retargeting"
+  # Lives under xr_hand_retarget/ (not repo-root third_party/).
+  local dest="$ROOT_DIR/xr_hand_retarget/third_party/wuji-retargeting"
+  local legacy="$ROOT_DIR/third_party/wuji-retargeting"
 
   fa_env_load_config "$ROOT_DIR"
   if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
     FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
   fi
 
-  mkdir -p "$ROOT_DIR/third_party"
+  mkdir -p "$ROOT_DIR/xr_hand_retarget/third_party"
+  # One-shot migrate from old repo-root checkout if new path is empty.
+  if [[ ! -e "$dest" && -d "$legacy/.git" ]]; then
+    echo ">>> 迁移旧路径 $legacy → $dest"
+    mv "$legacy" "$dest"
+    rmdir "$ROOT_DIR/third_party" 2>/dev/null || true
+  fi
   if [[ -d "$dest/.git" ]]; then
     echo ">>> 已有 $dest，检出子模块"
     git -C "$dest" submodule update --init --recursive
@@ -460,7 +468,7 @@ install_wuji_retargeting() {
         ;;
     esac
   )
-  echo ">>> wuji-retargeting 安装完成。手型配置: configs/wuji_hand2.yaml"
+  echo ">>> wuji-retargeting 安装完成。手型配置: xr_hand_retarget/configs/wuji_hand2.yaml"
 }
 
 # Official PC Service debs from https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases

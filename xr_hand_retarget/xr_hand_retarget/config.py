@@ -285,6 +285,8 @@ def find_wuji_retargeting_root(explicit: str | Path | None = None) -> Path | Non
     env = os.environ.get("WUJI_RETARGETING_ROOT")
     if env:
         candidates.append(Path(env).expanduser())
+    # Preferred: under xr_hand_retarget/; legacy: repo-root third_party/.
+    candidates.append(_PACKAGE_ROOT / "third_party" / "wuji-retargeting")
     candidates.append(_REPO_ROOT / "third_party" / "wuji-retargeting")
     candidates.extend(_installed_wuji_roots())
     seen: set[Path] = set()

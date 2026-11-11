@@ -25,7 +25,7 @@ python -m xr_hand_retarget.calibrate \
 Wuji Studio 里建 profile 并完成手套标定，关掉 Studio（手套只接受一个客户端），然后：
 
 ```bash
-cd third_party/wuji-retargeting/example
+cd xr_hand_retarget/third_party/wuji-retargeting/example
 python calibrate_offset.py --hand right \
   --config config/adaptive_analytical_wuji_glove_wuji_hand_2_right.yaml
 ```
@@ -66,7 +66,7 @@ python -m xr_hand_retarget.preview --side right \
 ```bash
 python -m xr_hand_retarget.calibrate --config xr_hand_retarget/configs/wuji_hand2.yaml \
   --side right --seconds 20 --dump-pkl /tmp/xrt_mp21.pkl
-cd third_party/wuji-retargeting/example
+cd xr_hand_retarget/third_party/wuji-retargeting/example
 mjpython tuning_tool.py --play /tmp/xrt_mp21.pkl --hand right \
   --config config/adaptive_analytical_wuji_glove_wuji_hand_2_right.yaml
 ```

@@ -1,7 +1,7 @@
 # Snapshot of official wuji-retargeting
 #   example/config/adaptive_analytical_wuji_glove_wuji_hand_2_left.yaml
 # plus local tuning_tool segment_scaling. Optimizer URDF/MJCF/link_naming stay official
-# (resolved against third_party/wuji-retargeting). Switch via wuji_hand2.yaml
+# (resolved against xr_hand_retarget/third_party/wuji-retargeting). Switch via wuji_hand2.yaml
 # retargeting.type: official.
 #
 # AdaptiveOptimizerAnalytical configuration for Wuji Glove driving the Wuji Hand 2 (LEFT HAND).

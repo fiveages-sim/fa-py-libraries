@@ -48,12 +48,11 @@
 ```
 fa-py-libraries/
   xr_hand_retarget/
-    algorithms/          # curl / nest / vector / dexpilot / …
-    backends/            # xhand1, linker, wuji
-    sources/             # OpenXR26 → 21
-  vr_pose_publisher/     # 腕 + DualHand
-  configs/local.yaml     # type + method
-  third_party/wuji-retargeting/   # 官方源（可选）
+    xr_hand_retarget/     # algorithms / backends / sources / …
+    configs/
+    third_party/wuji-retargeting/   # 官方源（可选）
+  vr_pose_publisher/     # 腕 + DualHand（XRT 路径）
+  configs/local.yaml     # 本机白名单
 ```
 
 以后若抽独立仓：等 `HandFrame` + `step(frame)` 稳定再 `git subtree`。**下一里程碑**仍是契约解耦（§3 P0），不是立刻两仓。
@@ -106,17 +105,17 @@ class HandSource(Protocol):
     def close(self) -> None: ...
 ```
 
-XRT 独占 PC Service 的约束留在 `source_xrt`，不要写进 `fa_hand.frame`。
+XRT 独占 PC Service 的约束留在 `source_xrt`，不要写进 `HandFrame`。
 
 ## 4. VR 与手映射的关系
 
-| | VR（本仓） | 手映射（fa_hand） |
+| | VR（本仓） | 手映射（`xr_hand_retarget`） |
 |--|-----------|-------------------|
 | 负责 | 头显/腕 `/teleop/*`、FSM 热键、bag | 21 点 → q |
 | 不负责 | 灵巧手 IK、人骨长 | 臂笛卡尔、Pico Input 模式 |
 
-`./run.sh vr-xrt wrist` = XRT source + 腕 EE + `fa_hand` 双手。  
-手套/DexCap 单开 `python -m fa_hand.ros` 即可，不启动 `vr_pose_publisher`。
+`./run.sh vr-xrt wrist` = XRT source + 腕 EE + `DualHandRetargetNode` 双手。  
+手套/DexCap 单开 `python -m xr_hand_retarget` 即可，不启动 `vr_pose_publisher`（勿与 `vr-xrt` 同开：PC Service 单客户端）。
 
 ## 5. 标准手 = Wuji 21（不是 20-DOF）
 

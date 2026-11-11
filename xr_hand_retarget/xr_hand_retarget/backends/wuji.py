@@ -129,10 +129,10 @@ def _missing_description_hint(urdf: Path) -> str:
         f"Hand 2 URDF 不存在: {urdf}\n"
         "官方仓库的子模块 wuji-description 没有检出（主仓有了，模型文件没有）。\n"
         "在仓库根执行:\n"
-        "  git -C third_party/wuji-retargeting submodule update --init --recursive\n"
+        "  git -C xr_hand_retarget/third_party/wuji-retargeting submodule update --init --recursive\n"
         "若子模块仍是空目录，直接 clone:\n"
         "  git clone https://github.com/wuji-technology/wuji-description.git \\\n"
-        "    third_party/wuji-retargeting/wuji_retargeting/wuji-description\n"
+        "    xr_hand_retarget/third_party/wuji-retargeting/wuji_retargeting/wuji-description\n"
         "然后再运行原来的 python -m xr_hand_retarget …"
     )
 
