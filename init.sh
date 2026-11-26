@@ -23,7 +23,7 @@ print_usage() {
   echo "环境:"
   echo "  env            按 .fa-env.toml 的 backend 创建环境"
   echo "  install        按 .fa-env.toml 的 backend 安装；可用 --conda / --uv 临时指定"
-  echo "  install-xrobotoolkit-pc-service  安装官方 XRoboToolkit-PC-Service deb（按 arch / Ubuntu 版本下载）"
+  echo "  install-xrobotoolkit-pc-service  安装官方 PC Service deb（默认挂钩 USB reverse；可用 --no-usb-helper）"
   echo "  install-xrobotoolkit  安装 PC Service（若未装）+ PyPI xrobotoolkit-sdk>=1.1.0"
   echo "  set-backend    修改 .fa-env.toml 中 backend（run.sh 读取）"
   echo "  install-uv     安装 uv 包管理器（https://astral.sh/uv/）"
@@ -279,17 +279,121 @@ xrobotoolkit_pc_service_installed() {
   return 1
 }
 
+# Host-side USB assist for Quest / Pico community (adb reverse -> 127.0.0.1:63901).
+# Hooks official runService/run2D/run3D so starting PC Service is enough.
+# Best-effort; Wi-Fi / Pico 4UE unaffected unless the app uses loopback.
+install_xrobotoolkit_usb_helper() {
+  local vr_dir="$ROOT_DIR/vr_pose_publisher"
+  local pcs_dir="/opt/apps/roboticsservice"
+  local hook="$pcs_dir/xrt_adb_reverse_hook.sh"
+  local skip="${XRT_NO_USB_HELPER:-0}"
+  local f marker="# XRT_ADB_REVERSE_HOOK"
+
+  if [[ "$skip" == "1" ]]; then
+    echo ">>> 跳过 USB/adb reverse 辅助（XRT_NO_USB_HELPER=1）。"
+    return 0
+  fi
+
+  echo ">>> 安装 USB/adb reverse 辅助（随 PC Service 启动；Wi‑Fi / 4UE 可忽略）"
+
+  if ! command -v adb >/dev/null 2>&1; then
+    echo ">>> 未检测到 adb，尝试: sudo apt-get install -y android-tools-adb"
+    if ! sudo apt-get install -y android-tools-adb; then
+      echo ">>> 警告: adb 安装失败；有线 Prefer USB 将不可用，直至手动安装 android-tools-adb。"
+      return 0
+    fi
+  else
+    echo ">>> 已有 adb: $(command -v adb)"
+  fi
+
+  if [[ ! -d "$pcs_dir" ]]; then
+    echo ">>> 未找到 $pcs_dir，跳过 hook（请先安装 PC Service deb）。"
+    return 0
+  fi
+
+  # Singleton watcher: Pico-community USB tunnels (pose + camera).
+  # Always refresh hook body so --force / re-run picks up port list changes.
+  sudo tee "$hook" >/dev/null <<'HOOK'
+#!/usr/bin/env bash
+# Started by runService/run2D/run3D. Maintains adb reverse/forward (Pico community layout).
+#   reverse 63901  pose / PC Service
+#   reverse 13579  camera commands
+#   forward 12345  H.264 video to headset
+SERIAL="${XRT_ADB_SERIAL:-}"
+LOCK="/tmp/xrt-adb-reverse.lock"
+LOG="/tmp/xrt-adb-reverse.log"
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+command -v adb >/dev/null 2>&1 || exit 0
+echo "$(date -Is) watch start pose=63901 cam=13579/12345" >>"$LOG"
+while true; do
+  mapfile -t devs < <(adb devices 2>/dev/null | awk 'NR>1 && $2=="device" {print $1}')
+  target=""
+  if [[ -n "$SERIAL" ]]; then
+    for d in "${devs[@]:-}"; do [[ "$d" == "$SERIAL" ]] && target="$SERIAL" && break; done
+  elif [[ "${#devs[@]}" -eq 1 ]]; then
+    target="${devs[0]}"
+  fi
+  if [[ -n "$target" ]]; then
+    adb -s "$target" reverse tcp:63901 tcp:63901 >>"$LOG" 2>&1 || true
+    adb -s "$target" reverse tcp:13579 tcp:13579 >>"$LOG" 2>&1 || true
+    adb -s "$target" forward tcp:12345 tcp:12345 >>"$LOG" 2>&1 || true
+  fi
+  sleep 2
+done
+HOOK
+  sudo chmod +x "$hook"
+
+  for f in runService.sh run2D.sh run3D.sh; do
+    local path="$pcs_dir/$f"
+    if [[ ! -f "$path" ]]; then
+      continue
+    fi
+    if sudo grep -qF "$marker" "$path" 2>/dev/null; then
+      echo ">>> 已挂钩: $f"
+      continue
+    fi
+    # Insert hook immediately after shebang (or at top).
+    sudo python3 - "$path" "$marker" "$hook" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+marker, hook = sys.argv[2], sys.argv[3]
+text = path.read_text(encoding="utf-8", errors="replace")
+line = (
+    f'{marker}\n'
+    f'[ -x "{hook}" ] && nohup "{hook}" >/dev/null 2>&1 &\n'
+)
+if text.startswith("#!"):
+    nl = text.find("\n")
+    text = text[: nl + 1] + line + text[nl + 1 :]
+else:
+    text = line + text
+path.write_text(text, encoding="utf-8")
+PY
+    echo ">>> 已挂钩: $f → 启动 PC Service 时自动 USB tunnels"
+  done
+
+  if [[ -f "$vr_dir/scripts/adb_reverse_teleop.sh" ]]; then
+    chmod +x "$vr_dir/scripts/adb_reverse_teleop.sh" 2>/dev/null || true
+  fi
+
+  echo ">>> 日常: 打开 XRoboToolkit-PC-Service 即可（reverse 63901+13579，forward 12345）"
+  echo ">>> 故障兜底: $vr_dir/scripts/adb_reverse_teleop.sh"
+  echo ">>> 日志: /tmp/xrt-adb-reverse.log ；多机时设 XRT_ADB_SERIAL=<serial>"
+}
+
 install_xrobotoolkit_pc_service() {
   local vr_dir="$ROOT_DIR/vr_pose_publisher"
   local deb_dir="$vr_dir/dependencies/debs"
-  local os_ver deb_name deb_url deb_path arch force=0
+  local os_ver deb_name deb_url deb_path arch force=0 no_usb_helper=0
   local arg
 
   for arg in "$@"; do
     case "$arg" in
       --force) force=1 ;;
+      --no-usb-helper) no_usb_helper=1 ;;
       *)
-        echo "未知参数: $arg（支持 --force）"
+        echo "未知参数: $arg（支持 --force、--no-usb-helper）"
         exit 1
         ;;
     esac
@@ -302,10 +406,15 @@ install_xrobotoolkit_pc_service() {
   fi
 
   if [[ "$force" -eq 0 ]] && xrobotoolkit_pc_service_installed; then
-  echo ">>> 检测到 XRoboToolkit PC Service 已安装（/opt/apps/roboticsservice 或 dpkg），跳过。"
-  echo ">>> 启动（推荐）: 应用菜单打开 XRoboToolkit-PC-Service"
-  echo ">>> 命令行备选: /opt/apps/roboticsservice/runService.sh"
-  echo ">>> 强制重装: $0 install-xrobotoolkit-pc-service --force"
+    echo ">>> 检测到 XRoboToolkit PC Service 已安装（/opt/apps/roboticsservice 或 dpkg），跳过 deb。"
+    echo ">>> 启动（推荐）: 应用菜单打开 XRoboToolkit-PC-Service"
+    echo ">>> 命令行备选: /opt/apps/roboticsservice/runService.sh"
+    echo ">>> 强制重装: $0 install-xrobotoolkit-pc-service --force"
+    if [[ "$no_usb_helper" -eq 0 ]]; then
+      install_xrobotoolkit_usb_helper
+    else
+      echo ">>> 已指定 --no-usb-helper，跳过 USB 辅助。"
+    fi
     return 0
   fi
 
@@ -387,16 +496,35 @@ install_xrobotoolkit_pc_service() {
   echo ">>> 启动（推荐）: 应用菜单打开 XRoboToolkit-PC-Service"
   echo ">>> 命令行备选: /opt/apps/roboticsservice/runService.sh"
   echo ">>> 头显端需安装 XRoboToolkit APK（adb install -g ...），见 README。"
+
+  if [[ "$no_usb_helper" -eq 0 ]]; then
+    install_xrobotoolkit_usb_helper
+  else
+    echo ">>> 已指定 --no-usb-helper，跳过 USB 辅助。"
+  fi
 }
 
 install_xrobotoolkit() {
   local vr_dir="$ROOT_DIR/vr_pose_publisher"
   local setup_script="$vr_dir/setup_xrobotoolkit.sh"
+  local pcs_args=()
+  local arg
 
   fa_env_load_config "$ROOT_DIR"
   if [[ -n "$INSTALL_BACKEND_OVERRIDE" ]]; then
     FA_ENV_BACKEND="$INSTALL_BACKEND_OVERRIDE"
   fi
+
+  for arg in "$@"; do
+    case "$arg" in
+      --conda|--uv) ;; # handled by caller / INSTALL_BACKEND_OVERRIDE
+      --force|--no-usb-helper) pcs_args+=("$arg") ;;
+      *)
+        echo "未知参数: $arg（支持 --conda/--uv/--force/--no-usb-helper）"
+        exit 1
+        ;;
+    esac
+  done
 
   if [[ ! -d "$vr_dir" ]]; then
     echo "未找到目录: $vr_dir"
@@ -408,8 +536,8 @@ install_xrobotoolkit() {
     exit 1
   fi
 
-  # PC Service is required at runtime; install deb first when missing.
-  install_xrobotoolkit_pc_service
+  # PC Service is required at runtime; install deb (+ USB helper) first when missing.
+  install_xrobotoolkit_pc_service "${pcs_args[@]+"${pcs_args[@]}"}"
 
   echo ">>> 使用 backend=$FA_ENV_BACKEND 安装 XRoboToolkit Python SDK（PyPI xrobotoolkit-sdk）"
   echo ">>> 安装脚本: $setup_script"
@@ -609,7 +737,7 @@ interactive_menu() {
   echo "  [环境与安装]"
   echo "    3) 按当前 backend 创建环境"
   echo "    4) 安装 interface / viser / vr / hand"
-  echo "    5) 安装 XRoboToolkit PC Service（官方 deb）"
+  echo "    5) 安装 XRoboToolkit PC Service（官方 deb；默认启动即 USB reverse）"
   echo "    6) 安装 XRoboToolkit SDK（VR XRT 后端，含 PC Service 检测）"
   echo
   echo "  [一键执行]"
