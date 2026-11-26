@@ -311,75 +311,162 @@ install_xrobotoolkit_usb_helper() {
     return 0
   fi
 
-  # Singleton watcher: Pico-community USB tunnels (pose + camera).
-  # Always refresh hook body so --force / re-run picks up port list changes.
+  # USB tunnels helper: --once applies now; default watches (survives replug).
+  # No sudo needed at runtime — only root was used to install under /opt.
   sudo tee "$hook" >/dev/null <<'HOOK'
 #!/usr/bin/env bash
-# Started by runService/run2D/run3D. Maintains adb reverse/forward (Pico community layout).
+# Pico-community / Quest Prefer-USB tunnels (no sudo):
 #   reverse 63901  pose / PC Service
 #   reverse 13579  camera commands
-#   forward 12345  H.264 video to headset
+#   forward 12345  H.264 video
+set -u
 SERIAL="${XRT_ADB_SERIAL:-}"
-LOCK="/tmp/xrt-adb-reverse.lock"
-LOG="/tmp/xrt-adb-reverse.log"
-exec 9>"$LOCK"
-flock -n 9 || exit 0
-command -v adb >/dev/null 2>&1 || exit 0
-echo "$(date -Is) watch start pose=63901 cam=13579/12345" >>"$LOG"
-while true; do
+# Per-uid paths: a root-owned /tmp/xrt-adb-reverse.log would block fiveages
+# redirects and skip the adb commands entirely.
+UID_TAG="${UID:-$(id -u)}"
+LOCK="${XRT_ADB_REVERSE_LOCK:-/tmp/xrt-adb-reverse-${UID_TAG}.lock}"
+PIDFILE="${XRT_ADB_REVERSE_PID:-/tmp/xrt-adb-reverse-${UID_TAG}.pid}"
+LOG="${XRT_ADB_REVERSE_LOG:-/tmp/xrt-adb-reverse-${UID_TAG}.log}"
+ONCE=0
+[[ "${1:-}" == "--once" ]] && ONCE=1
+
+log() { echo "$(date -Is) $*" >>"$LOG" 2>/dev/null || true; }
+
+pick_serial() {
+  local devs d
   mapfile -t devs < <(adb devices 2>/dev/null | awk 'NR>1 && $2=="device" {print $1}')
-  target=""
   if [[ -n "$SERIAL" ]]; then
-    for d in "${devs[@]:-}"; do [[ "$d" == "$SERIAL" ]] && target="$SERIAL" && break; done
-  elif [[ "${#devs[@]}" -eq 1 ]]; then
-    target="${devs[0]}"
+    for d in "${devs[@]:-}"; do [[ "$d" == "$SERIAL" ]] && { echo "$d"; return 0; }; done
+    return 1
   fi
-  if [[ -n "$target" ]]; then
-    adb -s "$target" reverse tcp:63901 tcp:63901 >>"$LOG" 2>&1 || true
-    adb -s "$target" reverse tcp:13579 tcp:13579 >>"$LOG" 2>&1 || true
-    adb -s "$target" forward tcp:12345 tcp:12345 >>"$LOG" 2>&1 || true
+  if [[ "${#devs[@]}" -eq 1 ]]; then
+    echo "${devs[0]}"
+    return 0
   fi
+  return 1
+}
+
+apply_tunnels() {
+  local target
+  if ! command -v adb >/dev/null 2>&1; then
+    log "adb missing"
+    return 1
+  fi
+  if ! target="$(pick_serial)"; then
+    log "no single authorized adb device (set XRT_ADB_SERIAL if multiple)"
+    return 1
+  fi
+  # Idempotent: existing reverse is OK (adb may print "Address already in use").
+  # Never bind stdout to a possibly-unwritable log — that would skip adb entirely.
+  adb -s "$target" reverse tcp:63901 tcp:63901 >/dev/null 2>&1 || true
+  adb -s "$target" reverse tcp:13579 tcp:13579 >/dev/null 2>&1 || true
+  adb -s "$target" forward tcp:12345 tcp:12345 >/dev/null 2>&1 || true
+  if adb -s "$target" reverse --list 2>/dev/null | grep -q 'tcp:63901'; then
+    log "ok serial=$target reverse=63901,13579 forward=12345"
+    return 0
+  fi
+  log "fail serial=$target (no tcp:63901 in reverse --list)"
+  return 1
+}
+
+if [[ "$ONCE" -eq 1 ]]; then
+  apply_tunnels
+  exit $?
+fi
+
+# Watcher: take over stale lock (previous hook died).
+exec 9>"$LOCK"
+if ! flock -n 9; then
+  oldpid="$(cat "$PIDFILE" 2>/dev/null || true)"
+  if [[ -n "${oldpid:-}" ]] && kill -0 "$oldpid" 2>/dev/null; then
+    log "watcher already running pid=$oldpid"
+    exit 0
+  fi
+  flock 9 || exit 0
+fi
+echo $$ >"$PIDFILE"
+log "watch start pid=$$"
+apply_tunnels || true
+while true; do
+  apply_tunnels || true
   sleep 2
 done
 HOOK
   sudo chmod +x "$hook"
 
+  # Wrap launchers: sync --once (so Connect works immediately), then watch.
+  # Clean vendor if polluted by an older in-place inject.
   for f in runService.sh run2D.sh run3D.sh; do
     local path="$pcs_dir/$f"
+    local vendor="$pcs_dir/${f}.xrt-vendor"
     if [[ ! -f "$path" ]]; then
       continue
     fi
-    if sudo grep -qF "$marker" "$path" 2>/dev/null; then
-      echo ">>> 已挂钩: $f"
-      continue
+
+    # Build/refresh a clean vendor (official body only).
+    if sudo grep -qF "$marker" "$path" 2>/dev/null && [[ -f "$vendor" ]] \
+      && ! sudo grep -qF 'xrt_adb_reverse_hook' "$vendor" 2>/dev/null; then
+      # Wrapper + clean vendor already in place — still refresh wrapper for --once.
+      :
+    else
+      if sudo grep -qF "$marker" "$path" 2>/dev/null && [[ -f "$vendor" ]]; then
+        src="$vendor"
+      else
+        src="$path"
+      fi
+      # Strip any previous hook lines, keep official launcher body.
+      sudo sed -e '/XRT_ADB_REVERSE_HOOK/d' \
+        -e '/xrt_adb_reverse_hook/d' \
+        "$src" | sudo tee "$vendor" >/dev/null
+      sudo chmod +x "$vendor"
     fi
-    # Insert hook immediately after shebang (or at top).
-    sudo python3 - "$path" "$marker" "$hook" <<'PY'
-import pathlib, sys
-path = pathlib.Path(sys.argv[1])
-marker, hook = sys.argv[2], sys.argv[3]
-text = path.read_text(encoding="utf-8", errors="replace")
-line = (
-    f'{marker}\n'
-    f'[ -x "{hook}" ] && nohup "{hook}" >/dev/null 2>&1 &\n'
-)
-if text.startswith("#!"):
-    nl = text.find("\n")
-    text = text[: nl + 1] + line + text[nl + 1 :]
-else:
-    text = line + text
-path.write_text(text, encoding="utf-8")
-PY
-    echo ">>> 已挂钩: $f → 启动 PC Service 时自动 USB tunnels"
+
+    sudo tee "$path" >/dev/null <<EOF
+#!/usr/bin/env bash
+${marker}
+# Auto USB tunnels. No sudo. Wi-Fi / Pico 4UE can ignore.
+DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+HOOK="\$DIR/xrt_adb_reverse_hook.sh"
+if [[ -x "\$HOOK" ]]; then
+  # Blocking once so reverse exists before Service clients connect.
+  "\$HOOK" --once >/dev/null 2>&1 || true
+  nohup "\$HOOK" >/dev/null 2>&1 &
+fi
+exec bash "\$DIR/${f}.xrt-vendor" "\$@"
+EOF
+    sudo chmod +x "$path"
+
+    if sudo grep -qF "$marker" "$path" 2>/dev/null && [[ -f "$vendor" ]]; then
+      echo ">>> 已挂钩: $f（先 --once reverse，再后台 watch）"
+    else
+      echo ">>> 警告: 挂钩 $f 失败" >&2
+    fi
   done
 
   if [[ -f "$vr_dir/scripts/adb_reverse_teleop.sh" ]]; then
     chmod +x "$vr_dir/scripts/adb_reverse_teleop.sh" 2>/dev/null || true
   fi
 
-  echo ">>> 日常: 打开 XRoboToolkit-PC-Service 即可（reverse 63901+13579，forward 12345）"
-  echo ">>> 故障兜底: $vr_dir/scripts/adb_reverse_teleop.sh"
-  echo ">>> 日志: /tmp/xrt-adb-reverse.log ；多机时设 XRT_ADB_SERIAL=<serial>"
+  # Drop root-owned legacy log that blocked non-root redirects.
+  if [[ -f /tmp/xrt-adb-reverse.log ]] && [[ ! -w /tmp/xrt-adb-reverse.log ]]; then
+    sudo rm -f /tmp/xrt-adb-reverse.log 2>/dev/null || true
+  fi
+
+  # Apply now (covers "Service already running" after init). No sudo at runtime.
+  if [[ -x "$hook" ]]; then
+    if "$hook" --once; then
+      echo ">>> reverse 已生效（adb reverse --list 应含 tcp:63901）"
+    else
+      echo ">>> 警告: 当前无可用 adb 设备，插上头显授权后再跑: $hook --once"
+    fi
+    nohup "$hook" >/dev/null 2>&1 &
+    echo ">>> watch 已后台运行 pid $!"
+  fi
+
+  echo ">>> 日常: bash /opt/apps/roboticsservice/runService.sh（无需 sudo，不必再手动 reverse）"
+  echo ">>> 或: ./run.sh vr-xrt-service   （已运行也会补 reverse）"
+  echo ">>> 校验: adb reverse --list | grep 63901"
+  echo ">>> 兜底: $vr_dir/scripts/adb_reverse_teleop.sh"
 }
 
 install_xrobotoolkit_pc_service() {
